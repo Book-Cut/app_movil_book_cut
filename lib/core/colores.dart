@@ -1,0 +1,8 @@
+import 'package:flutter/material.dart';
+
+class Colores {
+  static const azulOscuro = Color(0xFF0F172A);
+  static const carmin = Color(0xFFE11D48);
+  static const fondo = Color(0xFFFAFAFA);
+  static const gris = Color(0xFF52525B);
+}
