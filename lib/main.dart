@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 
 import 'core/colores.dart';
-import 'views/pantalla_inicio.dart';
+import 'core/sesion.dart';
+import 'views/pantalla_bienvenida.dart';
+import 'views/pantalla_principal.dart';
 
-void main() => runApp(const BookCutApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await Sesion.restaurar();
+  } catch (_) {
+    // Secure storage may be unavailable in preview or test environments.
+  }
+  runApp(const BookCutApp());
+}
 
 class BookCutApp extends StatelessWidget {
   const BookCutApp({super.key});
@@ -18,7 +28,9 @@ class BookCutApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colores.carmin),
         scaffoldBackgroundColor: Colores.fondo,
       ),
-      home: const PantallaInicio(),
+      home: Sesion.activa
+          ? const PantallaPrincipal()
+          : const PantallaBienvenida(),
     );
   }
 }

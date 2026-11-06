@@ -5,26 +5,41 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:book_cut_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets('starts on the welcome screen', (WidgetTester tester) async {
     await tester.pumpWidget(const BookCutApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('RESERVA TU CITA'), findsOneWidget);
+    expect(find.text('Reservar ahora'), findsOneWidget);
+    expect(find.text('Servicios'), findsNothing);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('opens the login form from the welcome screen', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const BookCutApp());
+    await tester.tap(find.text('Iniciar sesión'));
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Correo electrónico'), findsOneWidget);
+    expect(find.text('Contraseña'), findsOneWidget);
+  });
+
+  testWidgets('opens registration from the login form', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const BookCutApp());
+    await tester.tap(find.text('Iniciar sesión'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Crear cuenta'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nombre completo'), findsOneWidget);
+    expect(find.text('Teléfono'), findsOneWidget);
+    expect(find.text('Confirmar contraseña'), findsOneWidget);
   });
 }
