@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import 'sesion.dart';
 
@@ -22,6 +23,7 @@ Future<Map<String, dynamic>> enviarJson(
   bool conToken = false,
   Set<int> codigosExitosos = const {200},
 }) async {
+  final tokenUsado = conToken ? Sesion.token : null;
   final headers = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
@@ -40,25 +42,29 @@ Future<Map<String, dynamic>> enviarJson(
         body: jsonEncode(datos),
       )
       .timeout(_timeoutApi);
-  final cuerpo = _decodificarRespuesta(respuesta);
-  if (!codigosExitosos.contains(respuesta.statusCode)) {
-    throw ApiException(
-      _mensajeError(cuerpo, respuesta.statusCode),
-      codigo: respuesta.statusCode,
-    );
-  }
-  return cuerpo;
+  return _validarRespuesta(
+    respuesta,
+    codigosExitosos,
+    conToken: conToken,
+    tokenUsado: tokenUsado,
+  );
 }
 
 Future<Map<String, dynamic>> obtenerJson(
   String ruta, {
   bool conToken = false,
 }) async {
+  final tokenUsado = conToken ? Sesion.token : null;
   final headers = _encabezados(conToken: conToken);
   final respuesta = await http
       .get(Uri.parse('$apiUrl$ruta'), headers: headers)
       .timeout(_timeoutApi);
-  return _validarRespuesta(respuesta, const {200});
+  return await _validarRespuesta(
+    respuesta,
+    const {200},
+    conToken: conToken,
+    tokenUsado: tokenUsado,
+  );
 }
 
 Future<Map<String, dynamic>> actualizarJson(
@@ -66,6 +72,7 @@ Future<Map<String, dynamic>> actualizarJson(
   Map<String, dynamic> datos, {
   bool conToken = false,
 }) async {
+  final tokenUsado = conToken ? Sesion.token : null;
   final headers = _encabezados(conToken: conToken, json: true);
   final respuesta = await http
       .patch(
@@ -74,7 +81,47 @@ Future<Map<String, dynamic>> actualizarJson(
         body: jsonEncode(datos),
       )
       .timeout(_timeoutApi);
-  return _validarRespuesta(respuesta, const {200});
+  return await _validarRespuesta(
+    respuesta,
+    const {200},
+    conToken: conToken,
+    tokenUsado: tokenUsado,
+  );
+}
+
+Future<Map<String, dynamic>> subirArchivo(
+  String ruta, {
+  required String campo,
+  required List<int> bytes,
+  required String nombre,
+  required String tipoMime,
+  bool conToken = true,
+}) async {
+  final tokenUsado = conToken ? Sesion.token : null;
+  final request = http.MultipartRequest('POST', Uri.parse('$apiUrl$ruta'))
+    ..headers.addAll(_encabezados(conToken: conToken))
+    ..files.add(
+      http.MultipartFile.fromBytes(
+        campo,
+        bytes,
+        filename: nombre,
+        contentType: MediaType.parse(tipoMime),
+      ),
+    );
+  final client = http.Client();
+  try {
+    final stream = await client.send(request).timeout(_timeoutApi);
+    final respuesta = await http.Response.fromStream(stream)
+        .timeout(_timeoutApi);
+    return await _validarRespuesta(
+      respuesta,
+      const {200},
+      conToken: conToken,
+      tokenUsado: tokenUsado,
+    );
+  } finally {
+    client.close();
+  }
 }
 
 /// Pide una lista a la API. Tu backend responde { "data": [...] }
@@ -83,17 +130,35 @@ Future<List<dynamic>> obtenerLista(
   Map<String, String>? parametros,
   bool conToken = false,
 }) async {
+  final tokenUsado = conToken ? Sesion.token : null;
   final headers = _encabezados(conToken: conToken);
   final uri = Uri.parse('$apiUrl$ruta').replace(queryParameters: parametros);
   final respuesta = await http.get(uri, headers: headers).timeout(_timeoutApi);
   if (respuesta.statusCode != 200) {
+    await _invalidarSiNoAutorizado(
+      respuesta,
+      conToken: conToken,
+      tokenUsado: tokenUsado,
+    );
     throw ApiException(
       _mensajeError(_decodificarRespuesta(respuesta), respuesta.statusCode),
       codigo: respuesta.statusCode,
     );
   }
-  final cuerpo = _decodificarRespuesta(respuesta);
-  final datos = cuerpo['data'];
+  dynamic respuestaJson;
+  try {
+    respuestaJson = jsonDecode(respuesta.body);
+  } on FormatException {
+    throw ApiException(
+      'El servidor devolvió una respuesta inválida.',
+      codigo: respuesta.statusCode,
+    );
+  }
+  final datos = respuestaJson is List
+      ? respuestaJson
+      : respuestaJson is Map<String, dynamic>
+      ? respuestaJson['data']
+      : null;
   if (datos is! List<dynamic>) {
     throw ApiException('El servidor devolvió una lista inválida.');
   }
@@ -112,10 +177,17 @@ Map<String, String> _encabezados({bool conToken = false, bool json = false}) {
   return headers;
 }
 
-Map<String, dynamic> _validarRespuesta(
+Future<Map<String, dynamic>> _validarRespuesta(
   http.Response respuesta,
-  Set<int> codigosExitosos,
-) {
+  Set<int> codigosExitosos, {
+  bool conToken = false,
+  String? tokenUsado,
+}) async {
+  await _invalidarSiNoAutorizado(
+    respuesta,
+    conToken: conToken,
+    tokenUsado: tokenUsado,
+  );
   final cuerpo = _decodificarRespuesta(respuesta);
   if (!codigosExitosos.contains(respuesta.statusCode)) {
     throw ApiException(
@@ -124,6 +196,16 @@ Map<String, dynamic> _validarRespuesta(
     );
   }
   return cuerpo;
+}
+
+Future<void> _invalidarSiNoAutorizado(
+  http.Response respuesta, {
+  required bool conToken,
+  required String? tokenUsado,
+}) async {
+  if (respuesta.statusCode == 401 && conToken && tokenUsado != null) {
+    await Sesion.invalidar(tokenUsado);
+  }
 }
 
 Map<String, dynamic> _decodificarRespuesta(http.Response respuesta) {

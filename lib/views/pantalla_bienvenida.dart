@@ -5,7 +5,9 @@ import 'pantalla_inicio_sesion.dart';
 import 'pantalla_principal.dart';
 
 class PantallaBienvenida extends StatefulWidget {
-  const PantallaBienvenida({super.key});
+  final bool sesionExpirada;
+
+  const PantallaBienvenida({super.key, this.sesionExpirada = false});
 
   @override
   State<PantallaBienvenida> createState() => _PantallaBienvenidaState();
@@ -20,6 +22,23 @@ class _PantallaBienvenidaState extends State<PantallaBienvenida> {
 
   final _controlador = PageController();
   int _pagina = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.sesionExpirada) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Tu sesión ya no es válida. Inicia sesión de nuevo para continuar.',
+            ),
+          ),
+        );
+      });
+    }
+  }
 
   @override
   void dispose() {

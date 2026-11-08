@@ -6,6 +6,8 @@ class EncabezadoUsuario extends StatelessWidget {
   final String linea1;
   final String linea2;
   final VoidCallback? onAtras;
+  final VoidCallback? onAvatarTap;
+  final String? fotoPerfil;
   final Widget? hijo;
   final Widget? accion;
 
@@ -14,6 +16,8 @@ class EncabezadoUsuario extends StatelessWidget {
     required this.linea1,
     required this.linea2,
     this.onAtras,
+    this.onAvatarTap,
+    this.fotoPerfil,
     this.hijo,
     this.accion,
   });
@@ -45,13 +49,33 @@ class EncabezadoUsuario extends StatelessWidget {
                     ),
                   Row(
                     children: [
-                      const CircleAvatar(
-                        radius: 34,
-                        backgroundColor: Colors.white,
-                        child: Icon(
-                          Icons.person,
-                          size: 42,
-                          color: Colores.gris,
+                      InkWell(
+                        onTap: onAvatarTap,
+                        customBorder: const CircleBorder(),
+                        child: CircleAvatar(
+                          radius: 34,
+                          backgroundColor: Colors.white,
+                          child: ClipOval(
+                            child: SizedBox(
+                              width: 68,
+                              height: 68,
+                              child: fotoPerfil == null || fotoPerfil!.isEmpty
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 42,
+                                      color: Colores.gris,
+                                    )
+                                  : Image.network(
+                                      fotoPerfil!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => const Icon(
+                                        Icons.person,
+                                        size: 42,
+                                        color: Colores.gris,
+                                      ),
+                                    ),
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),

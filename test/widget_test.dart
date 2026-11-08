@@ -35,11 +35,22 @@ void main() {
     await tester.pumpWidget(const BookCutApp());
     await tester.tap(find.text('Iniciar sesión'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Crear cuenta'));
     await tester.tap(find.text('Crear cuenta'));
     await tester.pumpAndSettle();
 
     expect(find.text('Nombre completo'), findsOneWidget);
     expect(find.text('Teléfono'), findsOneWidget);
     expect(find.text('Confirmar contraseña'), findsOneWidget);
+    expect(find.text('Acepto los términos y condiciones.'), findsOneWidget);
+    expect(find.text('Registrarse con Google'), findsOneWidget);
+    expect(find.text('Registrarse con Facebook'), findsOneWidget);
+    await tester.ensureVisible(find.text('Crear cuenta'));
+    await tester.tap(find.text('Crear cuenta'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Debes aceptar los términos y condiciones.'),
+      findsOneWidget,
+    );
   });
 }

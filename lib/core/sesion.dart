@@ -17,6 +17,8 @@ class Sesion {
   static String? correo;
   static String? fotoPerfil;
   static int? rolId;
+  static void Function()? alExpirar;
+  static bool _invalidando = false;
 
   static bool get activa => token != null && token!.isNotEmpty;
 
@@ -95,5 +97,16 @@ class Sesion {
     await Future.wait(
       _claves.map((clave) => _almacen.write(key: clave, value: null)),
     );
+  }
+
+  static Future<void> invalidar(String tokenUsado) async {
+    if (!activa || token != tokenUsado || _invalidando) return;
+    _invalidando = true;
+    try {
+      await limpiar();
+    } finally {
+      _invalidando = false;
+      alExpirar?.call();
+    }
   }
 }

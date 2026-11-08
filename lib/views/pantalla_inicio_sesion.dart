@@ -56,6 +56,27 @@ class _PantallaInicioSesionState extends State<PantallaInicioSesion> {
     }
   }
 
+  Future<void> _iniciarSesionSocial(String proveedor) async {
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+
+    try {
+      await iniciarSesionSocial(proveedor: proveedor);
+      if (!mounted) return;
+      _continuarDespuesDeAcceso();
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.mensaje);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'No se pudo conectar. Revisa tu conexión.');
+      }
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
   Future<void> _crearCuenta() async {
     final registrado = await Navigator.of(
       context,
@@ -244,6 +265,72 @@ class _PantallaInicioSesionState extends State<PantallaInicioSesion> {
                     textStyle: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Row(
+                  children: [
+                    Expanded(child: Divider()),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('o'),
+                    ),
+                    Expanded(child: Divider()),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: _cargando
+                      ? null
+                      : () => _iniciarSesionSocial('google'),
+                  icon: const Text(
+                    'G',
+                    style: TextStyle(
+                      color: Color(0xFF4285F4),
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  label: const Text('Continuar con Google'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colores.azulOscuro,
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFFD4D4D8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: _cargando
+                      ? null
+                      : () => _iniciarSesionSocial('facebook'),
+                  icon: const Text(
+                    'f',
+                    style: TextStyle(
+                      color: Color(0xFF1877F2),
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  label: const Text('Continuar con Facebook'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colores.azulOscuro,
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFFD4D4D8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),

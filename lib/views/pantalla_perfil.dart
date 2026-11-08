@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../components/esqueleto.dart';
 import '../core/api.dart';
 import '../core/colores.dart';
 import '../core/sesion.dart';
@@ -22,11 +26,16 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
   final _telefonoController = TextEditingController();
   final _contrasenhaController = TextEditingController();
   final _confirmarContrasenhaController = TextEditingController();
+  final _selectorImagen = ImagePicker();
   Perfil? _perfil;
+  Uint8List? _fotoSeleccionada;
+  String? _nombreFotoSeleccionada;
+  String? _tipoMimeFoto;
   String? _error;
   String? _exito;
   bool _cargando = true;
   bool _guardando = false;
+  bool _guardandoFoto = false;
   bool _mostrarContrasenha = false;
 
   @override
@@ -98,6 +107,103 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     } finally {
       if (mounted) setState(() => _guardando = false);
     }
+  }
+
+  Future<void> _seleccionarFoto() async {
+    try {
+      final imagen = await _selectorImagen.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 4096,
+        maxHeight: 4096,
+        imageQuality: 90,
+      );
+      if (imagen == null || !mounted) return;
+
+      final extension = imagen.name.split('.').last.toLowerCase();
+      final tipoMime = switch (extension) {
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => null,
+      };
+      if (tipoMime == null) {
+        setState(() {
+          _error = 'La foto debe estar en formato JPG, PNG o WebP.';
+          _exito = null;
+        });
+        return;
+      }
+
+      if (await imagen.length() > 5 * 1024 * 1024) {
+        setState(() {
+          _error = 'La foto no puede superar los 5 MB.';
+          _exito = null;
+        });
+        return;
+      }
+
+      final bytes = await imagen.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _fotoSeleccionada = bytes;
+        _nombreFotoSeleccionada = imagen.name;
+        _tipoMimeFoto = tipoMime;
+        _error = null;
+        _exito = null;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'No se pudo seleccionar la foto.';
+          _exito = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _subirFoto() async {
+    final bytes = _fotoSeleccionada;
+    final nombre = _nombreFotoSeleccionada;
+    final tipoMime = _tipoMimeFoto;
+    if (bytes == null || nombre == null || tipoMime == null) return;
+
+    setState(() {
+      _guardandoFoto = true;
+      _error = null;
+      _exito = null;
+    });
+    try {
+      final perfil = await actualizarFotoPerfil(
+        bytes: bytes,
+        nombreArchivo: nombre,
+        tipoMime: tipoMime,
+      );
+      if (!mounted) return;
+      setState(() {
+        _perfil = perfil;
+        _fotoSeleccionada = null;
+        _nombreFotoSeleccionada = null;
+        _tipoMimeFoto = null;
+        _exito = 'Tu foto de perfil se actualizó correctamente.';
+      });
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.mensaje);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'No se pudo guardar la foto de perfil.');
+      }
+    } finally {
+      if (mounted) setState(() => _guardandoFoto = false);
+    }
+  }
+
+  void _cancelarFoto() {
+    setState(() {
+      _fotoSeleccionada = null;
+      _nombreFotoSeleccionada = null;
+      _tipoMimeFoto = null;
+      _error = null;
+    });
   }
 
   Future<void> _cerrarSesion() async {
@@ -177,8 +283,25 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
         ],
       ),
       body: _cargando
-          ? const Center(
-              child: CircularProgressIndicator(color: Colores.carmin),
+          ? const SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 24, 20, 32),
+              child: EfectoEsqueleto(
+                child: Column(
+                  children: [
+                    BloqueEsqueleto(ancho: 92, alto: 92, radio: 46),
+                    SizedBox(height: 12),
+                    BloqueEsqueleto(ancho: 140, alto: 14),
+                    SizedBox(height: 28),
+                    BloqueEsqueleto(ancho: double.infinity, alto: 58, radio: 12),
+                    SizedBox(height: 14),
+                    BloqueEsqueleto(ancho: double.infinity, alto: 58, radio: 12),
+                    SizedBox(height: 14),
+                    BloqueEsqueleto(ancho: double.infinity, alto: 58, radio: 12),
+                    SizedBox(height: 28),
+                    BloqueEsqueleto(ancho: double.infinity, alto: 52, radio: 14),
+                  ],
+                ),
+              ),
             )
           : _perfil == null
           ? _estadoError()
@@ -215,34 +338,55 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
           CircleAvatar(
             radius: 46,
             backgroundColor: Colores.azulOscuro,
-            child: urlFoto == null || urlFoto.isEmpty
-                ? Text(
-                    _iniciales.isEmpty ? 'U' : _iniciales,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                : ClipOval(
-                    child: Image.network(
-                      urlFoto,
-                      width: 92,
-                      height: 92,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Center(
-                        child: Text(
-                          _iniciales.isEmpty ? 'U' : _iniciales,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+            child: ClipOval(
+              child: SizedBox(
+                width: 92,
+                height: 92,
+                child: _fotoSeleccionada != null
+                    ? Image.memory(_fotoSeleccionada!, fit: BoxFit.cover)
+                    : urlFoto == null || urlFoto.isEmpty
+                    ? _avatarSinFoto()
+                    : Image.network(
+                        urlFoto,
+                        key: ValueKey(urlFoto),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _avatarSinFoto(),
                       ),
-                    ),
-                  ),
+              ),
+            ),
           ),
+          TextButton.icon(
+            onPressed: _guardandoFoto || _guardando ? null : _seleccionarFoto,
+            icon: const Icon(Icons.camera_alt_outlined),
+            label: const Text('Cambiar foto'),
+          ),
+          const Text(
+            'JPG, PNG o WebP · Máximo 5 MB',
+            style: TextStyle(color: Colores.gris, fontSize: 12),
+          ),
+          if (_fotoSeleccionada != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: _guardandoFoto ? null : _subirFoto,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colores.carmin,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(
+                    _guardandoFoto ? 'Subiendo...' : 'Guardar foto',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _guardandoFoto ? null : _cancelarFoto,
+                  child: const Text('Cancelar'),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             _perfil!.nombre,
@@ -393,6 +537,17 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
       ),
     );
   }
+
+  Widget _avatarSinFoto() => Center(
+    child: Text(
+      _iniciales.isEmpty ? 'U' : _iniciales,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 28,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  );
 
   Widget _mensaje(String texto, Color color) => Padding(
     padding: const EdgeInsets.only(bottom: 12),

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/colores.dart';
+import '../components/indicador_pasos_registro.dart';
 import '../services/autenticacion_service.dart';
+import 'pantalla_verificar_correo.dart';
 
 class PantallaRegistro extends StatefulWidget {
   const PantallaRegistro({super.key});
@@ -19,7 +21,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   final _contrasenhaController = TextEditingController();
   final _confirmacionController = TextEditingController();
   bool _mostrarContrasenha = false;
+  bool _aceptaTerminos = false;
   bool _cargando = false;
+  String? _errorTerminos;
   String? _error;
 
   @override
@@ -33,20 +37,82 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 
   Future<void> _registrar() async {
-    if (!_formKey.currentState!.validate()) return;
+    final formularioValido = _formKey.currentState!.validate();
+    if (!_aceptaTerminos) {
+      setState(
+        () => _errorTerminos = 'Debes aceptar los términos y condiciones.',
+      );
+    }
+    if (!formularioValido || !_aceptaTerminos) return;
 
     setState(() {
       _cargando = true;
+      _errorTerminos = null;
       _error = null;
     });
 
     try {
-      await registrarUsuario(
+      await enviarCodigoRegistro(
         nombre: _nombreController.text.trim(),
         correo: _correoController.text.trim(),
         telefono: _telefonoController.text.trim(),
         contrasenha: _contrasenhaController.text,
+        terminosAceptados: _aceptaTerminos,
       );
+      if (!mounted) return;
+      final verificado = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => PantallaVerificarCorreo(
+            correo: _correoController.text.trim(),
+            reenviarCodigo: () => enviarCodigoRegistro(
+              nombre: _nombreController.text.trim(),
+              correo: _correoController.text.trim(),
+              telefono: _telefonoController.text.trim(),
+              contrasenha: _contrasenhaController.text,
+              terminosAceptados: _aceptaTerminos,
+            ),
+          ),
+        ),
+      );
+      if (verificado == true && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.mensaje);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'No se pudo conectar. Revisa tu conexión.');
+      }
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  Future<void> _registrarConSocial(String proveedor) async {
+    final telefono = _telefonoController.text.trim();
+    if (telefono.isEmpty || telefono.length > 45) {
+      setState(() {
+        _error = 'Ingresa un teléfono válido para continuar.';
+        _errorTerminos = null;
+      });
+      return;
+    }
+    if (!_aceptaTerminos) {
+      setState(() {
+        _error = null;
+        _errorTerminos = 'Debes aceptar los términos y condiciones.';
+      });
+      return;
+    }
+
+    setState(() {
+      _cargando = true;
+      _error = null;
+      _errorTerminos = null;
+    });
+
+    try {
+      await registrarConSocial(proveedor: proveedor, telefono: telefono);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.mensaje);
@@ -101,7 +167,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                 icon: const Icon(Icons.arrow_back),
                 color: Colores.azulOscuro,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+              const IndicadorPasosRegistro(pasoActual: 1),
+              const SizedBox(height: 24),
               const Text(
                 'Crea tu cuenta',
                 style: TextStyle(
@@ -222,6 +290,98 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                           : null,
                     ),
                   ],
+                ),
+              ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Checkbox(
+                    value: _aceptaTerminos,
+                    activeColor: Colores.carmin,
+                    onChanged: _cargando
+                        ? null
+                        : (acepta) => setState(() {
+                            _aceptaTerminos = acepta ?? false;
+                            if (_aceptaTerminos) _errorTerminos = null;
+                          }),
+                  ),
+                  const Expanded(
+                    child: Text('Acepto los términos y condiciones.'),
+                  ),
+                ],
+              ),
+              if (_errorTerminos != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Text(
+                    _errorTerminos!,
+                    style: const TextStyle(color: Colores.carmin),
+                  ),
+                ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(child: Divider()),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('o'),
+                    ),
+                    Expanded(child: Divider()),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: _cargando
+                      ? null
+                      : () => _registrarConSocial('google'),
+                  icon: const Text(
+                    'G',
+                    style: TextStyle(
+                      color: Color(0xFF4285F4),
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  label: const Text('Registrarse con Google'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colores.azulOscuro,
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFFD4D4D8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: _cargando
+                      ? null
+                      : () => _registrarConSocial('facebook'),
+                  icon: const Text(
+                    'f',
+                    style: TextStyle(
+                      color: Color(0xFF1877F2),
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  label: const Text('Registrarse con Facebook'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colores.azulOscuro,
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFFD4D4D8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
                 ),
               ),
               if (_error != null) ...[
