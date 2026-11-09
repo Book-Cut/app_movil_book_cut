@@ -6,14 +6,19 @@ Future<List<String>> listarHorasDisponibles({
   required int barberoId,
   required DateTime fecha,
   required int duracion,
+  int? citaId,
 }) async {
+  final params = <String, String>{
+    'barbero_id': '$barberoId',
+    'fecha': fechaApi(fecha),
+    'duracion': '$duracion',
+  };
+  if (citaId != null) {
+    params['cita_id'] = '$citaId';
+  }
   final datos = await obtenerLista(
     '/disponibilidad',
-    parametros: {
-      'barbero_id': '$barberoId',
-      'fecha': fechaApi(fecha),
-      'duracion': '$duracion',
-    },
+    parametros: params,
     conToken: true,
   );
   return datos.map((e) => '$e').toList();

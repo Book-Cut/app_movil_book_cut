@@ -73,3 +73,33 @@ Future<void> crearCita({
     codigosExitosos: const {201},
   );
 }
+
+Future<void> confirmarAsistenciaCita(int idCita) async {
+  await actualizarJson(
+    '/citas/$idCita/confirmar-asistencia',
+    {},
+    conToken: true,
+  );
+}
+
+Future<void> cancelarCitaCliente(int idCita) async {
+  await eliminarJson(
+    '/citas/$idCita',
+    conToken: true,
+  );
+}
+
+Future<void> reagendarCitaCliente({
+  required int idCita,
+  required DateTime fecha,
+  required String hora,
+}) async {
+  await actualizarJson(
+    '/citas/$idCita/reagendar',
+    {
+      'fecha': fechaApi(fecha),
+      'hora': hora,
+    },
+    conToken: true,
+  );
+}

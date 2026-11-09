@@ -207,21 +207,117 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
   }
 
   Future<void> _cerrarSesion() async {
-    final confirmar = await showDialog<bool>(
+    final confirmar = await showModalBottomSheet<bool>(
       context: context,
-      builder: (contexto) => AlertDialog(
-        title: const Text('Cerrar sesión'),
-        content: const Text('¿Quieres salir de tu cuenta?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(contexto, false),
-            child: const Text('Cancelar'),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (contexto) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 20,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 12, 22, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFFECACA), width: 1.2),
+                  ),
+                  child: const Icon(
+                    Icons.logout_rounded,
+                    color: Color(0xFFDC2626),
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Cerrar sesión',
+                  style: TextStyle(
+                    color: Colores.azulOscuro,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '¿Estás seguro de que deseas salir de tu cuenta? Tendrás que volver a ingresar tus credenciales para agendar citas.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colores.gris,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.pop(contexto, true),
+                    icon: const Icon(Icons.logout_rounded, size: 18),
+                    label: const Text(
+                      'Sí, cerrar sesión',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFDC2626),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(contexto, false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colores.azulOscuro,
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Permanecer en la cuenta',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(contexto, true),
-            child: const Text('Cerrar sesión'),
-          ),
-        ],
+        ),
       ),
     );
     if (confirmar != true) return;

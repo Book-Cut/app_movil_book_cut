@@ -89,6 +89,28 @@ Future<Map<String, dynamic>> actualizarJson(
   );
 }
 
+
+Future<Map<String, dynamic>> eliminarJson(
+  String ruta, {
+  Map<String, dynamic>? datos,
+  bool conToken = false,
+}) async {
+  final tokenUsado = conToken ? Sesion.token : null;
+  final headers = _encabezados(conToken: conToken, json: datos != null);
+  final respuesta = await http
+      .delete(
+        Uri.parse('$apiUrl$ruta'),
+        headers: headers,
+        body: datos != null ? jsonEncode(datos) : null,
+      )
+      .timeout(_timeoutApi);
+  return await _validarRespuesta(
+    respuesta,
+    const {200},
+    conToken: conToken,
+    tokenUsado: tokenUsado,
+  );
+}
 Future<Map<String, dynamic>> subirArchivo(
   String ruta, {
   required String campo,
@@ -237,3 +259,4 @@ String _mensajeError(Map<String, dynamic> cuerpo, int codigo) {
       ? mensaje
       : 'Error de API ($codigo).';
 }
+

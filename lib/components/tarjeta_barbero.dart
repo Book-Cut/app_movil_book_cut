@@ -11,6 +11,9 @@ class TarjetaBarbero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tieneFoto =
+        barbero.fotoPerfil != null && barbero.fotoPerfil!.isNotEmpty;
+
     return Card(
       color: Colors.white,
       elevation: 1.5,
@@ -23,10 +26,30 @@ class TarjetaBarbero extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 28,
-                backgroundColor: Color(0xFFE4E4E7),
-                child: Icon(Icons.person, size: 34, color: Color(0xFFA1A1AA)),
+                backgroundColor: const Color(0xFFE4E4E7),
+                child: ClipOval(
+                  child: SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: tieneFoto
+                        ? Image.network(
+                            barbero.fotoPerfil!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(
+                              Icons.person,
+                              size: 34,
+                              color: Color(0xFFA1A1AA),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.person,
+                            size: 34,
+                            color: Color(0xFFA1A1AA),
+                          ),
+                  ),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(

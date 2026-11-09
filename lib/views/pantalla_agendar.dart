@@ -291,42 +291,246 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
       return;
     }
 
-    final confirmar = await showDialog<bool>(
+    final confirmar = await showModalBottomSheet<bool>(
       context: context,
-      builder: (contexto) => AlertDialog(
-        title: const Text('Confirma tu cita'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Barbero: ${widget.barbero?.nombre ?? 'Cualquiera disponible'}',
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (contexto) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 20,
+              offset: Offset(0, -4),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Servicios:\n${_serviciosSeleccionados.asMap().entries.map((entrada) => '- ${entrada.value!.nombre}: ${horaBonita(_horasSeleccionadasPorIndice[entrada.key]!)}').join('\n')}',
-            ),
-            const SizedBox(height: 4),
-            Text('Fecha: ${fechaLarga(_fecha)}'),
-            const SizedBox(height: 4),
-            Text('Total: \$${_total.toStringAsFixed(0)}'),
-            const SizedBox(height: 12),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(contexto, false),
-            child: const Text('Volver'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(contexto, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colores.carmin,
-              foregroundColor: Colors.white,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 12, 22, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF1F2),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFFFE4E6)),
+                      ),
+                      child: const Icon(
+                        Icons.event_available_rounded,
+                        color: Colores.carmin,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Confirma tu cita',
+                            style: TextStyle(
+                              color: Colores.azulOscuro,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Revisa el resumen antes de agendar',
+                            style: TextStyle(
+                              color: Colores.gris,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.person_outline, size: 18, color: Colores.carmin),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Barbero: ${widget.barbero?.nombre ?? 'Cualquiera disponible'}',
+                              style: const TextStyle(
+                                color: Colores.azulOscuro,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          const Icon(Icons.calendar_today_outlined, size: 16, color: Colores.carmin),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              fechaLarga(_fecha),
+                              style: const TextStyle(
+                                color: Colores.azulOscuro,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Divider(height: 1, color: Color(0xFFE2E8F0)),
+                      ),
+                      const Text(
+                        'Servicios seleccionados:',
+                        style: TextStyle(
+                          color: Colores.gris,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ..._serviciosSeleccionados.asMap().entries.map((entrada) {
+                        final serv = entrada.value!;
+                        final hora = _horasSeleccionadasPorIndice[entrada.key];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check, size: 14, color: Colors.green),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  serv.nombre,
+                                  style: const TextStyle(color: Colores.azulOscuro, fontSize: 13),
+                                ),
+                              ),
+                              if (hora != null)
+                                Text(
+                                  horaBonita(hora),
+                                  style: const TextStyle(
+                                    color: Colores.gris,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      }),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Divider(height: 1, color: Color(0xFFE2E8F0)),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total a pagar:',
+                            style: TextStyle(
+                              color: Colores.azulOscuro,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF1F2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '\$${_total.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                color: Colores.carmin,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(contexto, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colores.carmin,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Confirmar reserva',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(contexto, false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colores.azulOscuro,
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Volver a revisar',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            child: const Text('Confirmar reserva'),
           ),
-        ],
+        ),
       ),
     );
     if (confirmar != true || !mounted) return;
@@ -396,6 +600,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
         EncabezadoUsuario(
           linea1: 'Reserva con',
           linea2: widget.barbero?.nombre ?? 'Cualquier barbero',
+          fotoPerfil: widget.barbero?.fotoPerfil,
           onAtras: () => Navigator.pop(context),
           hijo: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,6 +635,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
         EncabezadoUsuario(
           linea1: 'Completa tu cita',
           linea2: 'Servicios y horarios',
+          fotoPerfil: widget.barbero?.fotoPerfil,
           onAtras: () => setState(() => _mostrarServicios = false),
           hijo: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -848,3 +1054,4 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
     ],
   );
 }
+

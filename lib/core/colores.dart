@@ -7,4 +7,5 @@ class Colores {
   static const dorado = Color(0xFFEAB748);
   static const fondo = Color(0xFFFAFAFA);
   static const gris = Color(0xFF52525B);
+  static const grisBorde = Color(0xFFE4E4E7);
 }

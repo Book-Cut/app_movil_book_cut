@@ -105,7 +105,7 @@ class _CarruselBeneficiosState extends State<CarruselBeneficios> {
                   child: Image.network(
                     b?.imagenUrl ?? _imagenAlternativa,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (_, _, _) =>
                         Image.network(_imagenAlternativa, fit: BoxFit.cover),
                   ),
                 );
@@ -137,3 +137,4 @@ class _CarruselBeneficiosState extends State<CarruselBeneficios> {
     );
   }
 }
+
