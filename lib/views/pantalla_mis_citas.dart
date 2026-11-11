@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../components/esqueleto.dart';
@@ -7,6 +9,7 @@ import '../core/fechas.dart';
 import '../models/cita.dart';
 import '../services/citas_service.dart';
 import '../services/disponibilidad_service.dart';
+import '../services/valoraciones_service.dart';
 
 class PantallaMisCitas extends StatefulWidget {
   const PantallaMisCitas({super.key});
@@ -19,30 +22,45 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
   List<Cita>? _citas;
   String? _error;
   bool _cargando = true;
+  Timer? _timerRefresco;
 
   @override
   void initState() {
     super.initState();
     _cargarCitas();
+    _timerRefresco = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (!_cargando) unawaited(_cargarCitas(silencioso: true));
+    });
   }
 
-  Future<void> _cargarCitas() async {
-    setState(() {
-      _cargando = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _timerRefresco?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _cargarCitas({bool silencioso = false}) async {
+    if (!silencioso) {
+      setState(() {
+        _cargando = true;
+        _error = null;
+      });
+    }
     try {
       final citas = await listarCitasCliente();
       if (!mounted) return;
-      setState(() => _citas = citas);
+      setState(() {
+        _citas = citas;
+        _error = null;
+      });
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || silencioso) return;
       setState(() => _error = error.mensaje);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || silencioso) return;
       setState(() => _error = 'No se pudieron cargar tus citas.');
     } finally {
-      if (mounted) setState(() => _cargando = false);
+      if (mounted && !silencioso) setState(() => _cargando = false);
     }
   }
 
@@ -65,7 +83,9 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('¡Asistencia confirmada exitosamente! Tu turno está asegurado.'),
+          content: Text(
+            '¡Asistencia confirmada exitosamente! Tu turno está asegurado.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -109,7 +129,6 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Tirador superior (drag handle)
                 Center(
                   child: Container(
                     width: 42,
@@ -121,15 +140,16 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                     ),
                   ),
                 ),
-
-                // Ícono de advertencia estilizado
                 Container(
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
                     color: const Color(0xFFFEF2F2),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFFECACA), width: 1.2),
+                    border: Border.all(
+                      color: const Color(0xFFFECACA),
+                      width: 1.2,
+                    ),
                   ),
                   child: const Icon(
                     Icons.event_busy_rounded,
@@ -138,8 +158,6 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Título
                 const Text(
                   'Cancelar cita',
                   style: TextStyle(
@@ -149,8 +167,6 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                   ),
                 ),
                 const SizedBox(height: 8),
-
-                // Subtítulo
                 const Text(
                   '¿Estás seguro de que deseas cancelar esta cita? Esta acción liberará tu turno y no se puede deshacer.',
                   textAlign: TextAlign.center,
@@ -161,8 +177,6 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // Tarjeta de resumen de la cita
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
@@ -247,8 +261,6 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // Botón principal de cancelar (alerta roja)
                 SizedBox(
                   width: double.infinity,
                   height: 50,
@@ -257,7 +269,10 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                     icon: const Icon(Icons.close_rounded, size: 18),
                     label: const Text(
                       'Sí, cancelar cita',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFDC2626),
@@ -270,8 +285,6 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                   ),
                 ),
                 const SizedBox(height: 10),
-
-                // Botón secundario para conservar la cita
                 SizedBox(
                   width: double.infinity,
                   height: 48,
@@ -286,7 +299,10 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                     ),
                     child: const Text(
                       'Conservar mi cita',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                 ),
@@ -299,7 +315,6 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
 
     if (cancelar == true) {
       final citasPrevias = _citas;
-      // Actualización inmediata para que el usuario no tenga que cambiar de vista
       setState(() {
         _citas = _citas?.map((c) {
           if (c.id == cita.id) {
@@ -325,7 +340,6 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
         if (mounted) setState(() => _citas = citasActualizadas);
       } catch (e) {
         if (!mounted) return;
-        // Si el backend rechazó la cancelación, restauramos y mostramos alerta clara
         setState(() => _citas = citasPrevias);
         await showModalBottomSheet<void>(
           context: context,
@@ -402,7 +416,10 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        child: const Text('Entendido', style: TextStyle(fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'Entendido',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
                   ],
@@ -435,10 +452,41 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
     );
   }
 
+  void _abrirModalCalificar(Cita cita) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ModalCalificarCita(
+        cita: cita,
+        onCalificada: (valoracion) {
+          setState(() {
+            _citas = _citas
+                ?.map((c) => c.id == cita.id ? c.copyWith(valoracion: valoracion) : c)
+                .toList();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('¡Gracias por tu calificación!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final citas = _citas ?? const <Cita>[];
-    final proximas = citas.where((cita) => !cita.esAnterior).toList()
+    final futuras = citas.where((cita) => !cita.esAnterior).toList();
+    final afectadas = futuras
+        .where((cita) => cita.afectadaPendiente)
+        .toList()
+      ..sort((a, b) => a.inicio.compareTo(b.inicio));
+    final proximas = futuras
+        .where((cita) => !cita.afectadaPendiente)
+        .toList()
       ..sort((a, b) => a.inicio.compareTo(b.inicio));
     final anteriores = citas.where((cita) => cita.esAnterior).toList()
       ..sort((a, b) => b.inicio.compareTo(a.inicio));
@@ -470,6 +518,16 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
             else if (_error != null)
               _errorCitas()
             else ...[
+              if (afectadas.isNotEmpty) ...[
+                _seccion(
+                  titulo: 'Citas afectadas',
+                  subtitulo:
+                      'Tu barbero no podrá atender estas citas. Reagéndalas o cancélalas.',
+                  citas: afectadas,
+                  mensajeVacio: '',
+                ),
+                const SizedBox(height: 28),
+              ],
               _seccion(
                 titulo: 'Próximas citas',
                 citas: proximas,
@@ -489,28 +547,29 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
   }
 
   Widget _errorCitas() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 48),
-        child: Column(
-          children: [
-            const Icon(Icons.event_busy_outlined, size: 44, color: Colores.gris),
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colores.gris),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _cargarCitas,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
-            ),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 48),
+    child: Column(
+      children: [
+        const Icon(Icons.event_busy_outlined, size: 44, color: Colores.gris),
+        const SizedBox(height: 12),
+        Text(
+          _error!,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colores.gris),
         ),
-      );
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _cargarCitas,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Reintentar'),
+        ),
+      ],
+    ),
+  );
 
   Widget _seccion({
     required String titulo,
+    String? subtitulo,
     required List<Cita> citas,
     required String mensajeVacio,
   }) {
@@ -525,6 +584,13 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
             fontWeight: FontWeight.bold,
           ),
         ),
+        if (subtitulo != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitulo,
+            style: const TextStyle(color: Colores.gris, fontSize: 13),
+          ),
+        ],
         const SizedBox(height: 12),
         if (citas.isEmpty)
           Container(
@@ -558,6 +624,9 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
+        border: cita.afectadaPendiente
+            ? Border.all(color: const Color(0xFFFCA5A5), width: 1.5)
+            : null,
         boxShadow: const [
           BoxShadow(
             color: Color(0x10000000),
@@ -608,6 +677,21 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
               _etiquetaEstado(cita),
             ],
           ),
+          if (cita.afectadaPendiente && cita.motivoAfectada != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Motivo del barbero: ${cita.motivoAfectada}',
+                style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12),
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           const Divider(height: 1),
           const SizedBox(height: 12),
@@ -654,14 +738,99 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '${cita.modalidadPago} • Pago ${cita.estadoPago.toLowerCase()}',
+                  cita.factura != null && cita.factura!.numero.isNotEmpty
+                      ? '${cita.factura!.numero} · ${cita.factura!.metodoPago} · Pago ${cita.estadoPago.toLowerCase()}'
+                      : '${cita.modalidadPago} · Pago ${cita.estadoPago.toLowerCase()}',
                   style: const TextStyle(color: Colores.gris, fontSize: 12),
                 ),
               ),
+              if (cita.total > 0)
+                Text(
+                  precioBonito(cita.total),
+                  style: const TextStyle(
+                    color: Colores.azulOscuro,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
             ],
           ),
-
-          // Banner de confirmación de asistencia requerida (2h antes, dura 30 min)
+          if (cita.estado == 'Finalizado') ...[
+            const SizedBox(height: 12),
+            if (cita.valoracion != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        ...List.generate(
+                          5,
+                          (i) => Icon(
+                            i < cita.valoracion!.puntuacion
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            color: Colores.dorado,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Tu calificación: ${cita.valoracion!.puntuacion}/5',
+                          style: const TextStyle(
+                            color: Colores.azulOscuro,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (cita.valoracion!.comentario != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        cita.valoracion!.comentario!,
+                        style: const TextStyle(
+                          color: Colores.gris,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _abrirModalCalificar(cita),
+                  icon: const Icon(
+                    Icons.star_outline_rounded,
+                    color: Colores.dorado,
+                    size: 18,
+                  ),
+                  label: const Text(
+                    'Calificar cita',
+                    style: TextStyle(
+                      color: Colores.azulOscuro,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colores.dorado),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+          ],
           if (tieneAlertaConfirmacion) ...[
             const SizedBox(height: 12),
             Container(
@@ -676,7 +845,11 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.timer_outlined, color: Colores.carmin, size: 20),
+                      const Icon(
+                        Icons.timer_outlined,
+                        color: Colores.carmin,
+                        size: 20,
+                      ),
                       const SizedBox(width: 6),
                       const Expanded(
                         child: Text(
@@ -690,7 +863,10 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                       ),
                       if (minutosRestantes > 0)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(10),
@@ -710,7 +886,11 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                   const SizedBox(height: 6),
                   const Text(
                     'Esta notificación tiene una duración de 30 minutos. Si no confirmas tu asistencia, la cita se cancelará automáticamente. Si no puedes asistir, puedes reagendarla.',
-                    style: TextStyle(color: Color(0xFF991B1B), fontSize: 12, height: 1.3),
+                    style: TextStyle(
+                      color: Color(0xFF991B1B),
+                      fontSize: 12,
+                      height: 1.3,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -738,7 +918,11 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () => _abrirModalReagendar(cita),
-                      icon: const Icon(Icons.calendar_today_outlined, size: 15, color: Colores.carmin),
+                      icon: const Icon(
+                        Icons.calendar_today_outlined,
+                        size: 15,
+                        color: Colores.carmin,
+                      ),
                       label: const Text(
                         'No puedo ir • Reagendar cita',
                         style: TextStyle(color: Colores.carmin, fontSize: 13),
@@ -756,9 +940,9 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
               ),
             ),
           ],
-
-          // Asistencia confirmada aviso (si está confirmado y dentro de las 2 horas)
-          if (cita.estado == 'Confirmado' && !cita.puedeReagendar && !cita.esAnterior) ...[
+          if (cita.estado == 'Confirmado' &&
+              !cita.puedeReagendar &&
+              !cita.esAnterior) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -769,7 +953,11 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.check_circle_outline, color: Color(0xFF166534), size: 16),
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: Color(0xFF166534),
+                    size: 16,
+                  ),
                   SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -781,9 +969,8 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
               ),
             ),
           ],
-
-          // Botones inferiores de acción (Reagendar con anticipación y/o Cancelar)
-          if (cita.puedeCancelar || (cita.puedeReagendar && !tieneAlertaConfirmacion)) ...[
+          if (cita.puedeCancelar ||
+              (cita.puedeReagendar && !tieneAlertaConfirmacion)) ...[
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -791,7 +978,11 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
                 if (cita.puedeReagendar && !tieneAlertaConfirmacion) ...[
                   TextButton.icon(
                     onPressed: () => _abrirModalReagendar(cita),
-                    icon: const Icon(Icons.edit_calendar, size: 16, color: Colores.azulOscuro),
+                    icon: const Icon(
+                      Icons.edit_calendar,
+                      size: 16,
+                      color: Colores.azulOscuro,
+                    ),
                     label: const Text(
                       'Reagendar',
                       style: TextStyle(color: Colores.azulOscuro, fontSize: 13),
@@ -848,6 +1039,177 @@ class _PantallaMisCitasState extends State<PantallaMisCitas> {
       '${fecha.day} de ${nombresMeses[fecha.month - 1].toLowerCase()} de ${fecha.year}';
 }
 
+class _ModalCalificarCita extends StatefulWidget {
+  final Cita cita;
+  final ValueChanged<dynamic> onCalificada;
+
+  const _ModalCalificarCita({
+    required this.cita,
+    required this.onCalificada,
+  });
+
+  @override
+  State<_ModalCalificarCita> createState() => _ModalCalificarCitaState();
+}
+
+class _ModalCalificarCitaState extends State<_ModalCalificarCita> {
+  final _comentarioController = TextEditingController();
+  int _puntuacion = 0;
+  bool _enviando = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _comentarioController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _enviar() async {
+    if (_puntuacion < 1 || _enviando) return;
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+    try {
+      final valoracion = await calificarCita(
+        widget.cita.id,
+        puntuacion: _puntuacion,
+        comentario: _comentarioController.text,
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      widget.onCalificada(valoracion);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.mensaje;
+        _enviando = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'No se pudo enviar tu calificación.';
+        _enviando = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        14,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const Text(
+              'Califica tu cita',
+              style: TextStyle(
+                color: Colores.azulOscuro,
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Atendido por ${widget.cita.barbero}',
+              style: const TextStyle(color: Colores.gris, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (indice) {
+                final estrella = indice + 1;
+                return IconButton(
+                  onPressed: _enviando
+                      ? null
+                      : () => setState(() => _puntuacion = estrella),
+                  icon: Icon(
+                    estrella <= _puntuacion
+                        ? Icons.star_rounded
+                        : Icons.star_border_rounded,
+                    color: Colores.dorado,
+                    size: 38,
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _comentarioController,
+              maxLength: 500,
+              maxLines: 3,
+              enabled: !_enviando,
+              decoration: InputDecoration(
+                labelText: 'Comentario (opcional)',
+                hintText: 'Cuéntanos cómo fue tu experiencia...',
+                filled: true,
+                fillColor: Colores.fondo,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: Colores.carmin)),
+            ],
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _puntuacion == 0 || _enviando ? null : _enviar,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colores.carmin,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _enviando
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Enviar calificación',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Modal interactivo para reagendar una cita existente
 class _ModalReagendarCita extends StatefulWidget {
   final Cita cita;
@@ -873,9 +1235,19 @@ class _ModalReagendarCitaState extends State<_ModalReagendarCita> {
   @override
   void initState() {
     super.initState();
-    final hoy = DateTime.now();
-    _fecha = DateTime(hoy.year, hoy.month, hoy.day).add(const Duration(days: 1));
+    final ahora = DateTime.now();
+    _fecha = DateTime(ahora.year, ahora.month, ahora.day);
     _cargarHoras();
+  }
+
+  bool _esHoraCompatible(String hora) {
+    final todosDeHoraCompleta =
+        widget.cita.servicios.isNotEmpty &&
+        widget.cita.servicios.every(
+          (s) => (s.duracion ?? 0) >= 60 && (s.duracion ?? 0) % 60 == 0,
+        );
+    if (!todosDeHoraCompleta) return true;
+    return horaCompatibleConDuracion(hora, 60);
   }
 
   Future<void> _cargarHoras() async {
@@ -903,7 +1275,7 @@ class _ModalReagendarCitaState extends State<_ModalReagendarCita> {
       );
       if (!mounted) return;
       setState(() {
-        _horasDisponibles = horas;
+        _horasDisponibles = horas.where(_esHoraCompatible).toList();
         _cargandoHoras = false;
       });
     } catch (e) {
@@ -1022,8 +1394,6 @@ class _ModalReagendarCitaState extends State<_ModalReagendarCita> {
               style: const TextStyle(color: Colores.gris, fontSize: 13),
             ),
             const Divider(height: 24),
-
-            // Selector de fecha
             const Text(
               'Nueva fecha',
               style: TextStyle(
@@ -1037,14 +1407,21 @@ class _ModalReagendarCitaState extends State<_ModalReagendarCita> {
               onTap: _seleccionarFecha,
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   border: Border.all(color: Colores.grisBorde),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_today, size: 18, color: Colores.carmin),
+                    const Icon(
+                      Icons.calendar_today,
+                      size: 18,
+                      color: Colores.carmin,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -1069,8 +1446,6 @@ class _ModalReagendarCitaState extends State<_ModalReagendarCita> {
               ),
             ),
             const SizedBox(height: 20),
-
-            // Selector de horas
             const Text(
               'Horarios disponibles',
               style: TextStyle(
@@ -1126,8 +1501,9 @@ class _ModalReagendarCitaState extends State<_ModalReagendarCita> {
                     backgroundColor: Colors.white,
                     labelStyle: TextStyle(
                       color: seleccionado ? Colors.white : Colores.azulOscuro,
-                      fontWeight:
-                          seleccionado ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: seleccionado
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       fontSize: 13,
                     ),
                     side: BorderSide(
@@ -1144,7 +1520,6 @@ class _ModalReagendarCitaState extends State<_ModalReagendarCita> {
                   );
                 }).toList(),
               ),
-
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,

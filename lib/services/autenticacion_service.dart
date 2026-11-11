@@ -3,6 +3,7 @@ import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 
 import '../core/api.dart';
 import '../core/sesion.dart';
+import 'barberos_service.dart';
 
 Future<void> iniciarSesion({
   required String correo,
@@ -13,6 +14,18 @@ Future<void> iniciarSesion({
     'contrasenha': contrasenha,
   });
   await _guardarSesion(respuesta);
+}
+
+Future<String> solicitarRecuperacionContrasenha({
+  required String correo,
+}) async {
+  final respuesta = await enviarJson('/forgot-password', {
+    'correo': correo.trim(),
+  });
+  final mensaje = respuesta['message'];
+  return mensaje is String && mensaje.isNotEmpty
+      ? mensaje
+      : 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.';
 }
 
 Future<void> iniciarSesionSocial({required String proveedor}) async {
@@ -92,12 +105,12 @@ Future<void> enviarCodigoRegistro({
   required bool terminosAceptados,
 }) async {
   await enviarJson('/registro/send-code', {
-      'Nombre': nombre,
-      'correo': correo,
-      'telefono': telefono,
-      'contrasenha': contrasenha,
-      'terminos_aceptados': terminosAceptados,
-    });
+    'Nombre': nombre,
+    'correo': correo,
+    'telefono': telefono,
+    'contrasenha': contrasenha,
+    'terminos_aceptados': terminosAceptados,
+  });
 }
 
 Future<void> verificarCodigoRegistro({
@@ -120,6 +133,7 @@ Future<void> cerrarSesion() async {
   } catch (_) {
     // Clear the local session even when the device is offline.
   } finally {
+    limpiarCacheBarberos();
     await Sesion.limpiar();
   }
 }
@@ -133,15 +147,21 @@ Future<void> _guardarSesion(Map<String, dynamic> respuesta) async {
     throw ApiException('El servidor devolvió una respuesta incompleta.');
   }
 
+  final idUsuario = usuario['idUsuario'];
   final nombre = usuario['Nombre'];
   final correo = usuario['correo'];
   final telefono = usuario['telefono'];
   final rol = usuario['Roles_IDRol'];
+  final fotoPerfil = usuario['foto_perfil'];
+
+  limpiarCacheBarberos();
   await Sesion.guardar(
     token: token,
+    usuarioId: int.tryParse('$idUsuario'),
     nombre: nombre is String ? nombre : null,
     correo: correo is String ? correo : null,
     telefono: telefono is String ? telefono : null,
     rolId: int.tryParse('$rol'),
+    fotoPerfil: fotoPerfil is String ? fotoPerfil : null,
   );
 }

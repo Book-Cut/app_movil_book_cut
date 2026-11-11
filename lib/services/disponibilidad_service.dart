@@ -7,6 +7,7 @@ Future<List<String>> listarHorasDisponibles({
   required DateTime fecha,
   required int duracion,
   int? citaId,
+  int? servicioId,
 }) async {
   final params = <String, String>{
     'barbero_id': '$barberoId',
@@ -15,6 +16,9 @@ Future<List<String>> listarHorasDisponibles({
   };
   if (citaId != null) {
     params['cita_id'] = '$citaId';
+  }
+  if (servicioId != null) {
+    params['servicio_id'] = '$servicioId';
   }
   final datos = await obtenerLista(
     '/disponibilidad',

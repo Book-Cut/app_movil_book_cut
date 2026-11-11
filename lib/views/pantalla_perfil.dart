@@ -1,16 +1,18 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../components/dialogos_cuenta.dart';
 import '../components/esqueleto.dart';
+import '../components/selector_hora_sheet.dart';
 import '../core/api.dart';
 import '../core/colores.dart';
+import '../core/fechas.dart';
 import '../core/sesion.dart';
 import '../models/perfil.dart';
-import '../services/autenticacion_service.dart';
+import '../models/servicio.dart';
 import '../services/perfil_service.dart';
-import 'pantalla_bienvenida.dart';
+import '../services/servicios_service.dart';
 
 class PantallaPerfil extends StatefulWidget {
   const PantallaPerfil({super.key});
@@ -20,6 +22,16 @@ class PantallaPerfil extends StatefulWidget {
 }
 
 class _PantallaPerfilState extends State<PantallaPerfil> {
+  static const _abreviaturasDias = {
+    'Lunes': 'Lun',
+    'Martes': 'Mar',
+    'Miércoles': 'Mié',
+    'Jueves': 'Jue',
+    'Viernes': 'Vie',
+    'Sábado': 'Sáb',
+    'Domingo': 'Dom',
+  };
+
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
   final _correoController = TextEditingController();
@@ -28,6 +40,11 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
   final _confirmarContrasenhaController = TextEditingController();
   final _selectorImagen = ImagePicker();
   Perfil? _perfil;
+  List<Servicio> _serviciosCatalogo = [];
+  List<int> _servicioIdsSeleccionados = [];
+  Map<String, HorarioPerfil> _horariosBarberia = horariosBarberiaPorDefecto;
+  List<HorarioPerfil> _horarios = [];
+  bool _horariosAjustados = false;
   Uint8List? _fotoSeleccionada;
   String? _nombreFotoSeleccionada;
   String? _tipoMimeFoto;
@@ -37,6 +54,8 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
   bool _guardando = false;
   bool _guardandoFoto = false;
   bool _mostrarContrasenha = false;
+
+  bool get _esBarbero => Sesion.rolId == 2;
 
   @override
   void initState() {
@@ -58,14 +77,59 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     setState(() {
       _cargando = true;
       _error = null;
+      _horariosAjustados = false;
     });
     try {
-      final perfil = await obtenerPerfil();
+      final futuroPerfil = obtenerPerfil();
+      final futuroServicios = _esBarbero
+          ? listarServicios()
+          : Future.value(const <Servicio>[]);
+      final futuroBarberia = _esBarbero
+          ? listarHorariosBarberia().catchError(
+              (_) => const <String, HorarioPerfil>{},
+            )
+          : Future.value(const <String, HorarioPerfil>{});
+      final perfil = await futuroPerfil;
+      final servicios = await futuroServicios;
+      final barberiaServidor = await futuroBarberia;
       if (!mounted) return;
       _perfil = perfil;
+      _serviciosCatalogo = servicios;
       _nombreController.text = perfil.nombre;
       _correoController.text = perfil.correo;
       _telefonoController.text = perfil.telefono;
+      _servicioIdsSeleccionados = List<int>.of(perfil.servicioIds);
+      _horariosBarberia = barberiaServidor.isNotEmpty
+          ? barberiaServidor
+          : horariosBarberiaPorDefecto;
+
+      final reconciliacion = reconciliarHorariosConBarberia(
+        perfil.horarios,
+        _horariosBarberia,
+      );
+      _horarios = reconciliacion.horarios;
+
+      if (_esBarbero && barberiaServidor.isNotEmpty && reconciliacion.ajustado) {
+        try {
+          final actualizado = await actualizarPerfil(
+            nombre: perfil.nombre,
+            correo: perfil.correo,
+            telefono: perfil.telefono,
+            servicioIds: perfil.servicioIds,
+            horarios: reconciliacion.horarios,
+          );
+          if (!mounted) return;
+          _perfil = actualizado;
+          _horarios = reconciliarHorariosConBarberia(
+            actualizado.horarios,
+            _horariosBarberia,
+          ).horarios;
+          _exito =
+              'Tus horarios se actualizaron automáticamente al horario vigente de la barbería.';
+        } catch (_) {
+          _horariosAjustados = true;
+        }
+      }
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.mensaje);
     } catch (_) {
@@ -79,6 +143,21 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
+    final horariosAcomodados = _esBarbero
+        ? reconciliarHorariosConBarberia(_horarios, _horariosBarberia).horarios
+        : _horarios;
+    if (_esBarbero &&
+        horariosAcomodados.any(
+          (horario) => horario.horainicio.compareTo(horario.horafin) >= 0,
+        )) {
+      setState(() {
+        _error =
+            'La hora de fin debe ser posterior a la hora de inicio en cada día.';
+        _exito = null;
+      });
+      return;
+    }
+
     setState(() {
       _guardando = true;
       _error = null;
@@ -90,10 +169,18 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
         correo: _correoController.text.trim(),
         telefono: _telefonoController.text.trim(),
         contrasenha: _contrasenhaController.text,
+        servicioIds: _esBarbero ? _servicioIdsSeleccionados : null,
+        horarios: _esBarbero ? horariosAcomodados : null,
       );
       if (!mounted) return;
       setState(() {
         _perfil = perfil;
+        _servicioIdsSeleccionados = List<int>.of(perfil.servicioIds);
+        _horarios = reconciliarHorariosConBarberia(
+          perfil.horarios,
+          _horariosBarberia,
+        ).horarios;
+        _horariosAjustados = false;
         _contrasenhaController.clear();
         _confirmarContrasenhaController.clear();
         _exito = 'Los cambios se guardaron correctamente.';
@@ -206,130 +293,83 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
     });
   }
 
-  Future<void> _cerrarSesion() async {
-    final confirmar = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (contexto) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 20,
-              offset: Offset(0, -4),
-            ),
-          ],
+  HorarioPerfil _limiteBarberiaPara(String dia) =>
+      _horariosBarberia[dia] ??
+      horariosBarberiaPorDefecto[dia] ??
+      HorarioPerfil(diasemana: dia, horainicio: '09:00', horafin: '19:00');
+
+  void _toggleDia(String dia) {
+    final limite = _horariosBarberia[dia];
+    if (limite == null) return;
+    setState(() {
+      final existente = _horarios.indexWhere((h) => h.diasemana == dia);
+      if (existente >= 0) {
+        _horarios.removeAt(existente);
+        return;
+      }
+      _horarios = reconciliarHorariosConBarberia([
+        ..._horarios,
+        HorarioPerfil(
+          diasemana: dia,
+          horainicio: limite.horainicio,
+          horafin: limite.horafin,
         ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 12, 22, 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 20),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFFECACA), width: 1.2),
-                  ),
-                  child: const Icon(
-                    Icons.logout_rounded,
-                    color: Color(0xFFDC2626),
-                    size: 30,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Cerrar sesión',
-                  style: TextStyle(
-                    color: Colores.azulOscuro,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '¿Estás seguro de que deseas salir de tu cuenta? Tendrás que volver a ingresar tus credenciales para agendar citas.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colores.gris,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.pop(contexto, true),
-                    icon: const Icon(Icons.logout_rounded, size: 18),
-                    label: const Text(
-                      'Sí, cerrar sesión',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFDC2626),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(contexto, false),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colores.azulOscuro,
-                      side: const BorderSide(color: Color(0xFFCBD5E1)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text(
-                      'Permanecer en la cuenta',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+      ], _horariosBarberia).horarios;
+    });
+  }
+
+  void _aplicarHorarioATodos() {
+    if (_horarios.length < 2) return;
+    final referencia = _horarios.first;
+    setState(() {
+      _horarios = _horarios.map((h) {
+        final limite = _horariosBarberia[h.diasemana];
+        final adaptado = h.copyWith(
+          horainicio: referencia.horainicio,
+          horafin: referencia.horafin,
+        );
+        return limite == null
+            ? adaptado
+            : ajustarHorarioAFranja(adaptado, limite);
+      }).toList();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Horario de ${referencia.diasemana} adaptado al horario de atención de cada día.',
         ),
       ),
     );
-    if (confirmar != true) return;
+  }
 
-    try {
-      await cerrarSesion();
-    } catch (_) {}
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const PantallaBienvenida()),
-      (_) => false,
+  Future<void> _elegirHora(int indice, {required bool esInicio}) async {
+    final horario = _horarios[indice];
+    final limite = _limiteBarberiaPara(horario.diasemana);
+    final elegida = await mostrarSelectorHora(
+      context: context,
+      titulo:
+          '${horario.diasemana} · ${esInicio ? 'Hora de inicio' : 'Hora de fin'}',
+      horaActual: esInicio ? horario.horainicio : horario.horafin,
+      horaApertura: limite.horainicio,
+      horaCierre: limite.horafin,
+      horaMinimaExclusiva: esInicio ? null : horario.horainicio,
+      horaMaximaExclusiva: esInicio ? limite.horafin : null,
     );
+    if (elegida == null || !mounted) return;
+    setState(() {
+      if (esInicio) {
+        _horarios[indice] = horario.copyWith(
+          horainicio: elegida,
+          horafin: ajustarHoraFinTrasInicio(
+            elegida,
+            horario.horafin,
+            horaCierre: limite.horafin,
+          ),
+        );
+      } else {
+        _horarios[indice] = horario.copyWith(horafin: elegida);
+      }
+    });
   }
 
   String get _iniciales {
@@ -373,7 +413,7 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
         actions: [
           IconButton(
             tooltip: 'Cerrar sesión',
-            onPressed: _cerrarSesion,
+            onPressed: () => confirmarYCerrarSesion(context),
             icon: const Icon(Icons.logout),
           ),
         ],
@@ -540,15 +580,24 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _telefonoController,
-                  keyboardType: TextInputType.phone,
-                  maxLength: 45,
+                  keyboardType: TextInputType.number,
+                  maxLength: 10,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
                   decoration: _decoracion(
                     etiqueta: 'Número celular',
                     icono: Icons.phone_outlined,
                   ),
-                  validator: (valor) => (valor ?? '').trim().isEmpty
-                      ? 'Ingresa tu teléfono.'
-                      : null,
+                  validator: (valor) {
+                    final telefono = (valor ?? '').trim();
+                    if (telefono.isEmpty) return 'Ingresa tu teléfono.';
+                    if (!RegExp(r'^\d{10}$').hasMatch(telefono)) {
+                      return 'El teléfono debe tener 10 dígitos.';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -598,6 +647,7 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
                     return null;
                   },
                 ),
+                if (_esBarbero) _seccionBarbero(),
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -633,6 +683,327 @@ class _PantallaPerfilState extends State<PantallaPerfil> {
       ),
     );
   }
+
+  Widget _seccionBarbero() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colores.grisBorde),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Datos del barbero',
+            style: TextStyle(
+              color: Colores.azulOscuro,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Servicios de especialidad',
+            style: TextStyle(
+              color: Colores.azulOscuro,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          if (_serviciosCatalogo.isEmpty)
+            const Text(
+              'No hay servicios en el catálogo.',
+              style: TextStyle(color: Colores.gris, fontSize: 12),
+            )
+          else
+            ..._serviciosCatalogo.map((servicio) {
+              final marcado = _servicioIdsSeleccionados.contains(servicio.id);
+              return CheckboxListTile(
+                value: marcado,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                activeColor: Colores.carmin,
+                title: Text(
+                  servicio.nombre,
+                  style: const TextStyle(
+                    color: Colores.azulOscuro,
+                    fontSize: 14,
+                  ),
+                ),
+                onChanged: _guardando
+                    ? null
+                    : (val) {
+                        setState(() {
+                          if (val == true) {
+                            if (!_servicioIdsSeleccionados.contains(
+                              servicio.id,
+                            )) {
+                              _servicioIdsSeleccionados.add(servicio.id);
+                            }
+                          } else {
+                            _servicioIdsSeleccionados.remove(servicio.id);
+                          }
+                        });
+                      },
+              );
+            }),
+          const Divider(height: 24),
+          Row(
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Horarios de atención',
+                      style: TextStyle(
+                        color: Colores.azulOscuro,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Acotado al horario de la barbería. Toca una hora para ajustarla.',
+                      style: TextStyle(color: Colores.gris, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              if (_horarios.length > 1)
+                TextButton(
+                  onPressed: _guardando ? null : _aplicarHorarioATodos,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colores.carmin,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Igualar',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+            ],
+          ),
+          if (_horariosAjustados) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: const Text(
+                'Tus franjas se ajustaron al horario vigente de la barbería. Guarda cambios para aplicarlos.',
+                style: TextStyle(color: Color(0xFF92400E), fontSize: 11.5),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: List.generate(diasSemanaOrden.length, (i) {
+              final dia = diasSemanaOrden[i];
+              final abierto = _horariosBarberia.containsKey(dia);
+              final activo =
+                  abierto && _horarios.any((h) => h.diasemana == dia);
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: i == diasSemanaOrden.length - 1 ? 0 : 4,
+                  ),
+                  child: Tooltip(
+                    message: abierto
+                        ? '$dia (${horaBonita(_horariosBarberia[dia]!.horainicio)} - ${horaBonita(_horariosBarberia[dia]!.horafin)})'
+                        : '$dia: barbería cerrada',
+                    child: InkWell(
+                      onTap: _guardando || !abierto ? null : () => _toggleDia(dia),
+                      borderRadius: BorderRadius.circular(10),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        decoration: BoxDecoration(
+                          color: !abierto
+                              ? const Color(0xFFF1F5F9)
+                              : activo
+                              ? Colores.azulOscuro
+                              : Colores.fondo,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: !abierto
+                                ? const Color(0xFFE2E8F0)
+                                : activo
+                                ? Colores.azulOscuro
+                                : Colores.grisBorde,
+                          ),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: Text(
+                              _abreviaturasDias[dia] ?? dia.substring(0, 3),
+                              style: TextStyle(
+                                color: !abierto
+                                    ? const Color(0xFF94A3B8)
+                                    : activo
+                                    ? Colors.white
+                                    : Colores.gris,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 12),
+          if (_horarios.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              decoration: BoxDecoration(
+                color: Colores.fondo,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colores.grisBorde),
+              ),
+              child: const Text(
+                'No tienes horarios configurados. Activa al menos un día arriba.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colores.gris, fontSize: 12.5),
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                color: Colores.fondo,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colores.grisBorde),
+              ),
+              child: Column(
+                children: _horarios.asMap().entries.map((entry) {
+                  final indice = entry.key;
+                  final h = entry.value;
+                  final invalido = h.horainicio.compareTo(h.horafin) >= 0;
+                  return Column(
+                    children: [
+                      if (indice > 0)
+                        const Divider(height: 1, color: Colores.grisBorde),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: invalido
+                                          ? Colores.carmin
+                                          : const Color(0xFF16A34A),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      h.diasemana,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: invalido
+                                            ? Colores.carmin
+                                            : Colores.azulOscuro,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            _botonHoraCompacta(
+                              hora: horaBonita(h.horainicio),
+                              invalido: invalido,
+                              onTap: _guardando
+                                  ? null
+                                  : () => _elegirHora(indice, esInicio: true),
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 5),
+                              child: Icon(
+                                Icons.arrow_forward_rounded,
+                                size: 13,
+                                color: Colores.gris,
+                              ),
+                            ),
+                            _botonHoraCompacta(
+                              hora: horaBonita(h.horafin),
+                              invalido: invalido,
+                              onTap: _guardando
+                                  ? null
+                                  : () => _elegirHora(indice, esInicio: false),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _botonHoraCompacta({
+    required String hora,
+    required bool invalido,
+    required VoidCallback? onTap,
+  }) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(8),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: invalido ? Colores.carmin : Colores.grisBorde,
+        ),
+      ),
+      child: Text(
+        hora,
+        style: TextStyle(
+          color: invalido ? Colores.carmin : Colores.azulOscuro,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ),
+  );
 
   Widget _avatarSinFoto() => Center(
     child: Text(

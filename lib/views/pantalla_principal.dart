@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../components/dialogos_cuenta.dart';
 import '../components/encabezado_usuario.dart';
 import '../components/esqueleto.dart';
 import '../components/etiqueta_seccion.dart';
@@ -11,13 +12,13 @@ import '../core/sesion.dart';
 import '../models/barbero.dart';
 import '../models/servicio.dart';
 import '../providers/catalogo_providers.dart';
-import '../services/autenticacion_service.dart';
 import '../services/citas_service.dart';
+import 'navegacion_rol.dart';
 import 'pantalla_agendar.dart';
-import 'pantalla_bienvenida.dart';
 import 'pantalla_inicio_sesion.dart';
 import 'pantalla_mis_citas.dart';
 import 'pantalla_perfil.dart';
+import 'pantalla_registro.dart';
 
 class PantallaPrincipal extends ConsumerStatefulWidget {
   const PantallaPrincipal({super.key});
@@ -34,11 +35,29 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
   @override
   void initState() {
     super.initState();
+    Sesion.cambios.addListener(_alCambiarSesion);
+    _revisarConfirmaciones();
+  }
+
+  @override
+  void dispose() {
+    Sesion.cambios.removeListener(_alCambiarSesion);
+    super.dispose();
+  }
+
+  void _alCambiarSesion() {
+    if (!mounted) return;
+    setState(() {});
     _revisarConfirmaciones();
   }
 
   Future<void> _revisarConfirmaciones() async {
-    if (!Sesion.activa || Sesion.rolId != 3) return;
+    if (!Sesion.activa || Sesion.rolId != 3) {
+      if (_alertaConfirmacion && mounted) {
+        setState(() => _alertaConfirmacion = false);
+      }
+      return;
+    }
     try {
       final citas = await listarCitasCliente();
       final tienePendiente = citas.any(
@@ -48,6 +67,12 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
         setState(() => _alertaConfirmacion = tienePendiente);
       }
     } catch (_) {}
+  }
+
+  Future<void> _recargarCatalogo() async {
+    ref.invalidate(serviciosProvider);
+    ref.invalidate(barberosProvider);
+    await _revisarConfirmaciones();
   }
 
   void _alternar(int id) {
@@ -60,11 +85,11 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
     });
   }
 
-  void _elegirBarbero(
+  Future<void> _elegirBarbero(
     Barbero? barbero,
     List<Servicio> servicios,
     List<Barbero> barberos,
-  ) {
+  ) async {
     final seleccion = servicios.where((s) => _elegidos.contains(s.id)).toList();
     if (seleccion.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -72,7 +97,29 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
       );
       return;
     }
-    Navigator.push(
+
+    if (!Sesion.activa) {
+      final accion = await pedirAccesoParaReservar(
+        context,
+        nombreBarbero: barbero?.nombre,
+        cantidadServicios: seleccion.length,
+      );
+      if (!mounted || accion == null) return;
+
+      final ok = await _autenticarDesdeInvitado(accion);
+      if (!mounted || ok != true || !Sesion.activa) return;
+
+      ref.invalidate(barberosProvider);
+      if (Sesion.rolId != 3) {
+        irAInicioPorRol(context);
+        return;
+      }
+    } else if (Sesion.rolId != 3) {
+      irAInicioPorRol(context);
+      return;
+    }
+
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => PantallaAgendar(
@@ -80,6 +127,26 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
           barberos: barberos,
           servicios: seleccion,
           catalogoServicios: servicios,
+        ),
+      ),
+    );
+    _revisarConfirmaciones();
+  }
+
+  Future<bool?> _autenticarDesdeInvitado(String accion) {
+    if (accion == 'registro') {
+      return Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (_) => const PantallaRegistro()),
+      );
+    }
+    return Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PantallaInicioSesion(
+          volverAlOrigen: true,
+          mensajeInfo:
+              'Inicia sesión o regístrate para ver los horarios disponibles y confirmar tu reserva.',
         ),
       ),
     );
@@ -98,366 +165,29 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
         MaterialPageRoute(builder: (_) => const PantallaPerfil()),
       );
       if (mounted) setState(() {});
-    } else if (accion == 'login') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const PantallaInicioSesion()),
-      );
+    } else if (accion == 'login' || accion == 'registro') {
+      final ok = await _autenticarDesdeInvitado(accion);
+      if (!mounted || ok != true || !Sesion.activa) return;
+      ref.invalidate(barberosProvider);
+      if (Sesion.rolId != 3) {
+        irAInicioPorRol(context);
+      } else {
+        setState(() {});
+        _revisarConfirmaciones();
+      }
     } else if (accion == 'logout') {
-      _cerrarSesion();
+      await confirmarYCerrarSesion(context);
     }
   }
 
-  Future<void> _cerrarSesion() async {
-    final confirmar = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (contexto) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 20,
-              offset: Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 12, 22, 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 20),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFFECACA), width: 1.2),
-                  ),
-                  child: const Icon(
-                    Icons.logout_rounded,
-                    color: Color(0xFFDC2626),
-                    size: 30,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Cerrar sesión',
-                  style: TextStyle(
-                    color: Colores.azulOscuro,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '¿Estás seguro de que deseas salir de tu cuenta? Tendrás que volver a ingresar tus credenciales para agendar citas.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colores.gris,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.pop(contexto, true),
-                    icon: const Icon(Icons.logout_rounded, size: 18),
-                    label: const Text(
-                      'Sí, cerrar sesión',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFDC2626),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(contexto, false),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colores.azulOscuro,
-                      side: const BorderSide(color: Color(0xFFCBD5E1)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text(
-                      'Permanecer en la cuenta',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    if (confirmar != true) return;
-
-    try {
-      await cerrarSesion();
-    } catch (_) {}
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const PantallaBienvenida()),
-      (_) => false,
-    );
-  }
-
-  void _mostrarMenuCuenta() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        padding: const EdgeInsets.only(top: 12, bottom: 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Barra superior de arrastre
-            Center(
-              child: Container(
-                width: 44,
-                height: 5,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE4E4E7),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-
-            if (Sesion.activa) ...[
-              // Tarjeta resumen del usuario
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colores.fondo,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE4E4E7)),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 26,
-                      backgroundColor: Colores.azulOscuro,
-                      child: ClipOval(
-                        child: SizedBox(
-                          width: 52,
-                          height: 52,
-                          child: Sesion.fotoPerfil != null &&
-                                  Sesion.fotoPerfil!.isNotEmpty
-                              ? Image.network(
-                                  Sesion.fotoPerfil!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => const Icon(
-                                    Icons.person,
-                                    size: 30,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.person,
-                                  size: 30,
-                                  color: Colors.white,
-                                ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            Sesion.nombre ?? 'Usuario',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colores.azulOscuro,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            Sesion.correo ?? Sesion.telefono ?? '',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colores.gris,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colores.carmin.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              Sesion.rol,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colores.carmin,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-
-            if (Sesion.activa && Sesion.rolId == 3)
-              _itemMenuSheet(
-                ctx,
-                icono: Icons.calendar_month_rounded,
-                colorIcono: const Color(0xFF2563EB),
-                fondoIcono: const Color(0xFFEFF6FF),
-                titulo: 'Mis citas',
-                subtitulo: 'Revisa tus citas programadas e historial',
-                onTap: () => _abrirCuenta('mis-citas'),
-              ),
-
-            if (Sesion.activa)
-              _itemMenuSheet(
-                ctx,
-                icono: Icons.person_rounded,
-                colorIcono: Colores.carmin,
-                fondoIcono: const Color(0xFFFFF1F2),
-                titulo: 'Mi perfil',
-                subtitulo: 'Datos personales, contacto y foto',
-                onTap: () => _abrirCuenta('perfil'),
-              ),
-
-            if (Sesion.activa)
-              _itemMenuSheet(
-                ctx,
-                icono: Icons.logout_rounded,
-                colorIcono: Colors.red.shade600,
-                fondoIcono: const Color(0xFFFEF2F2),
-                titulo: 'Cerrar sesión',
-                subtitulo: 'Salir de tu cuenta en este teléfono',
-                esPeligro: true,
-                onTap: () => _abrirCuenta('logout'),
-              ),
-
-            if (!Sesion.activa)
-              _itemMenuSheet(
-                ctx,
-                icono: Icons.login_rounded,
-                colorIcono: Colores.carmin,
-                fondoIcono: const Color(0xFFFFF1F2),
-                titulo: 'Iniciar sesión',
-                subtitulo: 'Accede para gestionar y agendar citas',
-                onTap: () => _abrirCuenta('login'),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _itemMenuSheet(
-    BuildContext ctx, {
-    required IconData icono,
-    required Color colorIcono,
-    required Color fondoIcono,
-    required String titulo,
-    required String subtitulo,
-    required VoidCallback onTap,
-    bool esPeligro = false,
-  }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-      decoration: BoxDecoration(
-        color: esPeligro ? const Color(0xFFFFF5F5) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: esPeligro ? const Color(0xFFFED7D7) : const Color(0xFFE4E4E7),
-        ),
-      ),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        onTap: () {
-          Navigator.pop(ctx);
-          onTap();
-        },
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        leading: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: fondoIcono,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icono, color: colorIcono, size: 22),
-        ),
-        title: Text(
-          titulo,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-            color: esPeligro ? Colors.red.shade700 : Colores.azulOscuro,
-          ),
-        ),
-        subtitle: Text(
-          subtitulo,
-          style: TextStyle(
-            color: esPeligro ? Colors.red.shade400 : Colores.gris,
-            fontSize: 12,
-          ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: esPeligro ? Colors.red.shade300 : Colores.gris,
-          size: 20,
-        ),
-      ),
+  void _mostrarMenu() {
+    mostrarMenuCuenta(
+      context,
+      onMisCitas: () => _abrirCuenta('mis-citas'),
+      onPerfil: () => _abrirCuenta('perfil'),
+      onLogin: () => _abrirCuenta('login'),
+      onRegistro: () => _abrirCuenta('registro'),
+      onLogout: () => _abrirCuenta('logout'),
     );
   }
 
@@ -471,133 +201,218 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
 
     return Scaffold(
       backgroundColor: Colores.fondo,
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            EncabezadoUsuario(
-              linea1: 'Hola',
-              linea2: '$nombre!',
-              fotoPerfil: Sesion.fotoPerfil,
-              onAvatarTap: _mostrarMenuCuenta,
-              accion: IconButton(
-                tooltip: 'Cuenta',
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.menu_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
+      body: Column(
+        children: [
+          EncabezadoUsuario(
+            linea1: 'Hola',
+            linea2: '$nombre!',
+            fotoPerfil: Sesion.fotoPerfil,
+            redondearAbajo: false,
+            onAvatarTap: _mostrarMenu,
+            accion: IconButton(
+              tooltip: 'Cuenta',
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
                 ),
-                onPressed: _mostrarMenuCuenta,
+                child: const Icon(
+                  Icons.menu_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
-              hijo: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const EtiquetaSeccion('Servicios'),
-                  const SizedBox(height: 16),
-                  _bloqueServicios(servicios),
-                ],
-              ),
+              onPressed: _mostrarMenu,
             ),
-
-            if (_alertaConfirmacion)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: InkWell(
-                  onTap: () async {
-                    await Navigator.push<void>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PantallaMisCitas(),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              color: Colores.carmin,
+              onRefresh: _recargarCatalogo,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.only(top: 4, bottom: 20),
+                      decoration: const BoxDecoration(
+                        color: Colores.azulOscuro,
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(32),
+                        ),
                       ),
-                    );
-                    _revisarConfirmaciones();
-                  },
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const EtiquetaSeccion('Servicios'),
+                          const SizedBox(height: 14),
+                          _bloqueServicios(servicios),
+                        ],
+                      ),
                     ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFFECACA)),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x0A000000),
-                          blurRadius: 6,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
+                    if (!Sesion.activa) _bannerInvitado(),
+                    if (_alertaConfirmacion) _bannerConfirmacion(),
+                    const SizedBox(height: 22),
+                    const EtiquetaSeccion('Barberos disponibles', clara: true),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(20, 12, 20, 12),
+                      child: Text(
+                        'Elige tus servicios arriba y luego toca un barbero.',
+                        style: TextStyle(color: Colores.gris, fontSize: 13),
+                      ),
                     ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.timer_outlined,
-                          color: Colores.carmin,
-                          size: 24,
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '¡Confirmación de asistencia requerida!',
-                                style: TextStyle(
-                                  color: Colores.carmin,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Tienes una cita próxima. Confirma tu asistencia o reagéndala antes de 30 min.',
-                                style: TextStyle(
-                                  color: Color(0xFF991B1B),
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.chevron_right, color: Colores.carmin),
-                      ],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _bloqueBarberos(
+                        barberos,
+                        servicios.value,
+                        servicios.isLoading,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
               ),
-
-            const SizedBox(height: 24),
-            const EtiquetaSeccion('Barberos disponibles', clara: true),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 12, 20, 12),
-              child: Text(
-                'Elige tus servicios arriba y luego toca un barbero.',
-                style: TextStyle(color: Colores.gris, fontSize: 13),
-              ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: _bloqueBarberos(
-                barberos,
-                servicios.value,
-                servicios.isLoading,
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _bannerInvitado() => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFE4E6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.lock_person_outlined, color: Colores.carmin, size: 22),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Inicia sesión para reservar',
+                  style: TextStyle(
+                    color: Colores.azulOscuro,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Para consultar horarios disponibles y confirmar tu cita, debes iniciar sesión o registrarte.',
+            style: TextStyle(color: Colores.gris, fontSize: 12.5, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _abrirCuenta('login'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colores.carmin,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text(
+                    'Iniciar sesión',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _abrirCuenta('registro'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colores.azulOscuro,
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Colores.azulOscuro),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text(
+                    'Crear cuenta',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _bannerConfirmacion() => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+    child: InkWell(
+      onTap: () => _abrirCuenta('mis-citas'),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFEF2F2),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFFECACA)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A000000),
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.timer_outlined, color: Colores.carmin, size: 24),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '¡Confirmación de asistencia requerida!',
+                    style: TextStyle(
+                      color: Colores.carmin,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Tienes una cita próxima. Confirma tu asistencia o reagéndala antes de 30 min.',
+                    style: TextStyle(color: Color(0xFF991B1B), fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: Colores.carmin),
+          ],
+        ),
+      ),
+    ),
+  );
 
   Widget _mensajeServicios(String texto, {Widget? accion}) {
     return Padding(
@@ -798,8 +613,6 @@ class _EsqueletoServicio extends StatelessWidget {
           ),
           SizedBox(height: 8),
           BloqueEsqueleto(ancho: 60, alto: 10, color: Color(0xFF3B4252)),
-          SizedBox(height: 4),
-          BloqueEsqueleto(ancho: 44, alto: 10, color: Color(0xFF3B4252)),
         ],
       ),
     );

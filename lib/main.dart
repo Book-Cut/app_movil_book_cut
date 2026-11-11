@@ -7,8 +7,8 @@ import 'core/api.dart';
 import 'core/colores.dart';
 import 'core/sesion.dart';
 import 'services/perfil_service.dart';
+import 'views/navegacion_rol.dart';
 import 'views/pantalla_bienvenida.dart';
-import 'views/pantalla_principal.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -95,10 +95,15 @@ class _BookCutAppState extends State<BookCutApp> with WidgetsBindingObserver {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colores.carmin),
         scaffoldBackgroundColor: Colores.fondo,
+        dialogTheme: const DialogThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+        ),
+        timePickerTheme: const TimePickerThemeData(
+          backgroundColor: Colors.white,
+        ),
       ),
-      home: Sesion.activa
-          ? const PantallaPrincipal()
-          : const PantallaBienvenida(),
+      home: pantallaInicioPorRol(),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../components/calendario_mes.dart';
 import '../components/encabezado_usuario.dart';
@@ -13,7 +14,9 @@ import '../models/barbero.dart';
 import '../models/servicio.dart';
 import '../services/citas_service.dart';
 import '../services/disponibilidad_service.dart';
+import 'navegacion_rol.dart';
 import 'pantalla_inicio_sesion.dart';
+import 'pantalla_registro.dart';
 
 DateTime _hoy() {
   final n = DateTime.now();
@@ -72,7 +75,11 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
     _proximoIdLineaServicio = _idsLineasServicio.length;
     _nombreController.text = Sesion.nombre ?? '';
     _telefonoController.text = Sesion.telefono ?? '';
-    _cargarHoras();
+    if (!Sesion.activa) {
+      _requiereSesion = true;
+    } else {
+      _cargarHoras();
+    }
   }
 
   @override
@@ -119,6 +126,16 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
   }
 
   Future<void> _cargarHoras() async {
+    if (!Sesion.activa) {
+      setState(() {
+        _cargando = false;
+        _requiereSesion = true;
+        _horasSeleccionadasPorIndice.clear();
+        _horasPorServicioBarbero.clear();
+      });
+      return;
+    }
+
     final fechaPedida = _fecha;
     final solicitud = ++_solicitudDisponibilidad;
     setState(() {
@@ -134,25 +151,37 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
         servicios.map((servicio) async {
           final duracion = servicio.duracion < 1 ? 1 : servicio.duracion;
           if (widget.barbero != null) {
+            if (!widget.barbero!.ofreceServicio(servicio)) {
+              return <int, List<String>>{widget.barbero!.id: const <String>[]};
+            }
             final horas = await listarHorasDisponibles(
               barberoId: widget.barbero!.id,
               fecha: fechaPedida,
               duracion: duracion,
+              servicioId: servicio.id,
             );
             return {widget.barbero!.id: horas};
           }
+
+          final candidatos = widget.barberos
+              .where((b) => b.ofreceServicio(servicio))
+              .toList();
+          if (candidatos.isEmpty) {
+            return <int, List<String>>{};
+          }
           final horarios = await Future.wait(
-            widget.barberos.map(
+            candidatos.map(
               (barbero) => listarHorasDisponibles(
                 barberoId: barbero.id,
                 fecha: fechaPedida,
                 duracion: duracion,
+                servicioId: servicio.id,
               ),
             ),
           );
           return {
-            for (var i = 0; i < widget.barberos.length; i++)
-              widget.barberos[i].id: horarios[i],
+            for (var i = 0; i < candidatos.length; i++)
+              candidatos[i].id: horarios[i],
           };
         }),
       );
@@ -233,6 +262,9 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
         .expand((horas) => horas)
         .toSet();
     return candidatas.where((hora) {
+      if (!horaCompatibleConDuracion(hora, servicio.duracion)) {
+        return false;
+      }
       for (final entrada in _serviciosSeleccionados.asMap().entries) {
         if (entrada.key == indice || entrada.value == null) continue;
         final otroServicio = entrada.value!;
@@ -251,6 +283,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
           ? widget.barberos
           : [widget.barbero!];
       return barberosCandidatos.any((barbero) {
+        if (!barbero.ofreceServicio(servicio)) return false;
         if (!(horariosPorBarbero[barbero.id]?.contains(hora) ?? false)) {
           return false;
         }
@@ -258,6 +291,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
           if (entrada.key == indice || entrada.value == null) return true;
           final otroServicio = entrada.value!;
           final otraHora = _horasSeleccionadasPorIndice[entrada.key];
+          if (!barbero.ofreceServicio(otroServicio)) return false;
           return otraHora == null ||
               (_horasPorServicioBarbero[otroServicio.id]?[barbero.id]?.contains(
                     otraHora,
@@ -268,26 +302,43 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
     }).toList()..sort();
   }
 
-  Future<void> _iniciarSesion() async {
-    final inicioCorrecto = await Navigator.of(context).push<bool>(
+  Future<void> _autenticar({bool registro = false}) async {
+    final ok = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => const PantallaInicioSesion(volverAlOrigen: true),
+        builder: (_) => registro
+            ? const PantallaRegistro()
+            : const PantallaInicioSesion(
+                volverAlOrigen: true,
+                mensajeInfo:
+                    'Inicia sesión o regístrate para ver horarios disponibles y confirmar tu reserva.',
+              ),
       ),
     );
-    if (inicioCorrecto == true && mounted) await _cargarHoras();
+    if (!mounted || ok != true || !Sesion.activa) return;
+    if (Sesion.rolId != 3) {
+      irAInicioPorRol(context);
+      return;
+    }
+    if (_nombreController.text.trim().isEmpty) {
+      _nombreController.text = Sesion.nombre ?? '';
+    }
+    if (_telefonoController.text.trim().isEmpty) {
+      _telefonoController.text = Sesion.telefono ?? '';
+    }
+    await _cargarHoras();
   }
 
   Future<void> _reservar() async {
+    if (!Sesion.activa) {
+      await _autenticar();
+      return;
+    }
+
     if (_servicios.isEmpty ||
         _serviciosSeleccionados.any((servicio) => servicio == null) ||
         _horasSeleccionadasPorIndice.length != _servicios.length ||
         _reservando ||
         !_formKey.currentState!.validate()) {
-      return;
-    }
-
-    if (!Sesion.activa) {
-      await _iniciarSesion();
       return;
     }
 
@@ -382,7 +433,11 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.person_outline, size: 18, color: Colores.carmin),
+                          const Icon(
+                            Icons.person_outline,
+                            size: 18,
+                            color: Colores.carmin,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -399,7 +454,11 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          const Icon(Icons.calendar_today_outlined, size: 16, color: Colores.carmin),
+                          const Icon(
+                            Icons.calendar_today_outlined,
+                            size: 16,
+                            color: Colores.carmin,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -432,12 +491,19 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Row(
                             children: [
-                              const Icon(Icons.check, size: 14, color: Colors.green),
+                              const Icon(
+                                Icons.check,
+                                size: 14,
+                                color: Colors.green,
+                              ),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
                                   serv.nombre,
-                                  style: const TextStyle(color: Colores.azulOscuro, fontSize: 13),
+                                  style: const TextStyle(
+                                    color: Colores.azulOscuro,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
                               if (hora != null)
@@ -469,13 +535,16 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFFFF1F2),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              '\$${_total.toStringAsFixed(0)}',
+                              precioBonito(_total),
                               style: const TextStyle(
                                 color: Colores.carmin,
                                 fontWeight: FontWeight.bold,
@@ -504,7 +573,10 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                     ),
                     child: const Text(
                       'Confirmar reserva',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
                   ),
                 ),
@@ -523,7 +595,10 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                     ),
                     child: const Text(
                       'Volver a revisar',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                 ),
@@ -551,15 +626,77 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
       if (!mounted) return;
       await showDialog<void>(
         context: context,
-        builder: (contexto) => AlertDialog(
-          title: const Text('Cita reservada'),
-          content: const Text('Tu cita se guardó correctamente.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(contexto),
-              child: const Text('Aceptar'),
+        barrierDismissible: false,
+        builder: (contexto) => Dialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFECFDF5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: Color(0xFF16A34A),
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Cita reservada',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colores.azulOscuro,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Tu cita se guardó correctamente.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colores.gris,
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(contexto),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colores.carmin,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Aceptar',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       );
       if (mounted) Navigator.of(context).pop();
@@ -572,8 +709,9 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
           _horasSeleccionadasPorIndice.clear();
         });
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.mensaje)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.mensaje)),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -593,105 +731,189 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
     );
   }
 
-  Widget _vistaCalendario() => SingleChildScrollView(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        EncabezadoUsuario(
-          linea1: 'Reserva con',
-          linea2: widget.barbero?.nombre ?? 'Cualquier barbero',
-          fotoPerfil: widget.barbero?.fotoPerfil,
-          onAtras: () => Navigator.pop(context),
-          hijo: Column(
+  Widget _vistaCalendario() => Column(
+    children: [
+      EncabezadoUsuario(
+        linea1: 'Reserva con',
+        linea2: widget.barbero?.nombre ?? 'Cualquier barbero',
+        fotoPerfil: widget.barbero?.fotoPerfil,
+        redondearAbajo: false,
+        onAtras: () => Navigator.pop(context),
+      ),
+      Expanded(
+        child: SingleChildScrollView(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const EtiquetaSeccion('Elige tu fecha'),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: CalendarioMes(
-                  seleccionada: _fecha,
-                  onSeleccionar: (fecha) {
-                    setState(() => _fecha = fecha);
-                    _cargarHoras();
-                  },
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(bottom: 18),
+                decoration: const BoxDecoration(
+                  color: Colores.azulOscuro,
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(32),
+                  ),
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const EtiquetaSeccion('Elige tu fecha'),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: CalendarioMes(
+                        seleccionada: _fecha,
+                        onSeleccionar: (fecha) {
+                          setState(() => _fecha = fecha);
+                          _cargarHoras();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                child: _resumenSeleccion(),
               ),
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: _resumenSeleccion(),
-        ),
-      ],
-    ),
+      ),
+    ],
   );
 
-  Widget _vistaServicios() => SingleChildScrollView(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        EncabezadoUsuario(
-          linea1: 'Completa tu cita',
-          linea2: 'Servicios y horarios',
-          fotoPerfil: widget.barbero?.fotoPerfil,
-          onAtras: () => setState(() => _mostrarServicios = false),
-          hijo: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.calendar_today,
-                  color: Colors.white70,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Text(
+  Widget _vistaServicios() => Column(
+    children: [
+      EncabezadoUsuario(
+        linea1: 'Completa tu cita',
+        linea2: 'Servicios y horarios',
+        fotoPerfil: widget.barbero?.fotoPerfil,
+        onAtras: () => setState(() => _mostrarServicios = false),
+        hijo: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.calendar_today,
+                color: Colors.white70,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
                   '${fechaLarga(_fecha)} · ${widget.barbero?.nombre ?? 'Cualquier barbero'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 24),
-        const EtiquetaSeccion('Servicios de tu cita', clara: true),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                ...List.generate(
-                  _serviciosSeleccionados.length,
-                  (indice) => KeyedSubtree(
-                    key: ValueKey(_idsLineasServicio[indice]),
-                    child: _bloqueServicio(indice),
+      ),
+      Expanded(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(top: 20, bottom: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_requiereSesion) _tarjetaRequiereSesion(),
+              const EtiquetaSeccion('Servicios de tu cita', clara: true),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      ...List.generate(
+                        _serviciosSeleccionados.length,
+                        (indice) => KeyedSubtree(
+                          key: ValueKey(_idsLineasServicio[indice]),
+                          child: _bloqueServicio(indice),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: _agregarServicio,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Agregar otro servicio'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colores.azulOscuro,
+                            shape: const StadiumBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _resumenTotal(),
+                      if (!_requiereSesion) _datosConfirmacion(),
+                    ],
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: _agregarServicio,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Agregar otro servicio'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colores.azulOscuro,
-                      shape: const StadiumBorder(),
-                    ),
-                  ),
-                ),
-                _resumenTotal(),
-                _datosConfirmacion(),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-      ],
+      ),
+    ],
+  );
+
+  Widget _tarjetaRequiereSesion() => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFE4E6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Inicia sesión o regístrate para ver horarios',
+            style: TextStyle(
+              color: Colores.azulOscuro,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Necesitas una cuenta activa para consultar horarios disponibles y confirmar tu cita.',
+            style: TextStyle(color: Colores.gris, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _autenticar(registro: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colores.carmin,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                  ),
+                  child: const Text('Registrarse'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _autenticar(registro: false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colores.azulOscuro,
+                    backgroundColor: Colors.white,
+                  ),
+                  child: const Text('Iniciar sesión'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     ),
   );
 
@@ -726,7 +948,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
               ),
             ),
             Text(
-              '\$${_total.toStringAsFixed(0)}',
+              precioBonito(_total),
               style: const TextStyle(
                 color: Colores.azulOscuro,
                 fontSize: 17,
@@ -751,6 +973,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
         _servicios.isNotEmpty &&
         !_serviciosSeleccionados.any((servicio) => servicio == null);
     final puedeReservar =
+        !_requiereSesion &&
         puedeContinuar &&
         _horasSeleccionadasPorIndice.length == _servicios.length &&
         !_reservando &&
@@ -775,7 +998,9 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
           width: double.infinity,
           child: ElevatedButton(
             onPressed: _mostrarServicios
-                ? (puedeReservar ? _reservar : null)
+                ? (_requiereSesion
+                      ? () => _autenticar(registro: true)
+                      : (puedeReservar ? _reservar : null))
                 : (puedeContinuar
                       ? () => setState(() => _mostrarServicios = true)
                       : null),
@@ -801,7 +1026,9 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                   )
                 : Text(
                     _mostrarServicios
-                        ? 'Confirmar reserva · \$${_total.toStringAsFixed(0)}'
+                        ? (_requiereSesion
+                              ? 'Regístrate para reservar'
+                              : 'Confirmar reserva · ${precioBonito(_total)}')
                         : 'Elegir horarios y servicios',
                   ),
           ),
@@ -854,6 +1081,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                 ),
             ],
           ),
+          const SizedBox(height: 10),
           DropdownButtonFormField<int>(
             initialValue: servicio?.id,
             isExpanded: true,
@@ -871,7 +1099,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
                   (item) => DropdownMenuItem(
                     value: item.id,
                     child: Text(
-                      '${item.nombre} · \$${item.precio.toStringAsFixed(0)}',
+                      '${item.nombre} · ${precioBonito(item.precio)}',
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -883,21 +1111,23 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
           if (servicio != null) ...[
             const SizedBox(height: 8),
             Text(
-              '${servicio.duracion} min · \$${servicio.precio.toStringAsFixed(0)}',
+              '${servicio.duracion} min · ${precioBonito(servicio.precio)}',
               style: const TextStyle(color: Colores.gris, fontSize: 13),
             ),
-            const SizedBox(height: 14),
-            const Text(
-              'Hora disponible',
-              style: TextStyle(
-                color: Colores.gris,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.6,
+            if (!_requiereSesion) ...[
+              const SizedBox(height: 14),
+              const Text(
+                'Hora disponible',
+                style: TextStyle(
+                  color: Colores.gris,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.6,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            _selectorHoras(indice, servicio),
+              const SizedBox(height: 10),
+              _selectorHoras(indice, servicio),
+            ],
           ],
         ],
       ),
@@ -905,16 +1135,6 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
   }
 
   Widget _selectorHoras(int indice, Servicio servicio) {
-    if (_requiereSesion) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: _iniciarSesion,
-          icon: const Icon(Icons.login),
-          label: const Text('Iniciar sesión para ver horarios'),
-        ),
-      );
-    }
     if (_error != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -943,18 +1163,19 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
             BloqueEsqueleto(ancho: 84, alto: 38, radio: 10),
             BloqueEsqueleto(ancho: 84, alto: 38, radio: 10),
             BloqueEsqueleto(ancho: 84, alto: 38, radio: 10),
-            BloqueEsqueleto(ancho: 84, alto: 38, radio: 10),
-            BloqueEsqueleto(ancho: 84, alto: 38, radio: 10),
-            BloqueEsqueleto(ancho: 84, alto: 38, radio: 10),
           ],
         ),
       );
     }
     final horas = _horasDisponiblesPara(indice, servicio);
     if (horas.isEmpty) {
-      return const Text(
-        'No hay horarios compatibles para este servicio.',
-        style: TextStyle(color: Colores.gris),
+      final noOfrece =
+          widget.barbero != null && !widget.barbero!.ofreceServicio(servicio);
+      return Text(
+        noOfrece
+            ? '${widget.barbero!.nombre} no ofrece este servicio.'
+            : 'No hay horarios compatibles para este servicio en la fecha seleccionada.',
+        style: const TextStyle(color: Colores.gris),
       );
     }
     return SelectorHoras(
@@ -988,7 +1209,7 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
           ),
         ),
         Text(
-          '\$${_total.toStringAsFixed(0)}',
+          precioBonito(_total),
           style: const TextStyle(
             color: Colores.azulOscuro,
             fontSize: 22,
@@ -1030,7 +1251,12 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
       const SizedBox(height: 12),
       TextFormField(
         controller: _telefonoController,
-        keyboardType: TextInputType.phone,
+        keyboardType: TextInputType.number,
+        maxLength: 10,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(10),
+        ],
         decoration: InputDecoration(
           labelText: 'Teléfono / WhatsApp',
           prefixIcon: const Icon(Icons.phone_outlined),
@@ -1038,9 +1264,16 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
           fillColor: Colors.white,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        validator: (valor) => (valor ?? '').trim().isEmpty
-            ? 'Ingresa un teléfono de contacto.'
-            : null,
+        validator: (valor) {
+          final telefono = (valor ?? '').trim();
+          if (telefono.isEmpty) {
+            return 'Ingresa un teléfono de contacto.';
+          }
+          if (!RegExp(r'^\d{10}$').hasMatch(telefono)) {
+            return 'El teléfono debe tener 10 dígitos.';
+          }
+          return null;
+        },
       ),
       const SizedBox(height: 20),
       const Align(
@@ -1054,4 +1287,3 @@ class _PantallaAgendarState extends State<PantallaAgendar> {
     ],
   );
 }
-

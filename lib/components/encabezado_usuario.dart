@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/colores.dart';
 
@@ -10,6 +11,7 @@ class EncabezadoUsuario extends StatelessWidget {
   final String? fotoPerfil;
   final Widget? hijo;
   final Widget? accion;
+  final bool redondearAbajo;
 
   const EncabezadoUsuario({
     super.key,
@@ -20,100 +22,112 @@ class EncabezadoUsuario extends StatelessWidget {
     this.fotoPerfil,
     this.hijo,
     this.accion,
+    this.redondearAbajo = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        color: Colores.azulOscuro,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (onAtras != null)
-                    IconButton(
-                      onPressed: onAtras,
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      padding: EdgeInsets.zero,
-                      alignment: Alignment.centerLeft,
-                    ),
-                  Row(
-                    children: [
-                      InkWell(
-                        onTap: onAvatarTap,
-                        customBorder: const CircleBorder(),
-                        child: CircleAvatar(
-                          radius: 34,
-                          backgroundColor: Colors.white,
-                          child: ClipOval(
-                            child: SizedBox(
-                              width: 68,
-                              height: 68,
-                              child: fotoPerfil == null || fotoPerfil!.isEmpty
-                                  ? const Icon(
-                                      Icons.person,
-                                      size: 42,
-                                      color: Colores.gris,
-                                    )
-                                  : Image.network(
-                                      fotoPerfil!,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => const Icon(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colores.azulOscuro,
+          borderRadius: redondearAbajo
+              ? const BorderRadius.vertical(bottom: Radius.circular(32))
+              : BorderRadius.zero,
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  onAtras != null ? 4 : 12,
+                  20,
+                  hijo != null || redondearAbajo ? 18 : 14,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (onAtras != null)
+                      IconButton(
+                        tooltip: 'Volver',
+                        onPressed: onAtras,
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        padding: EdgeInsets.zero,
+                        alignment: Alignment.centerLeft,
+                      ),
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: onAvatarTap,
+                          customBorder: const CircleBorder(),
+                          child: CircleAvatar(
+                            radius: 30,
+                            backgroundColor: Colors.white,
+                            child: ClipOval(
+                              child: SizedBox(
+                                width: 60,
+                                height: 60,
+                                child: fotoPerfil == null || fotoPerfil!.isEmpty
+                                    ? const Icon(
                                         Icons.person,
-                                        size: 42,
+                                        size: 38,
                                         color: Colores.gris,
+                                      )
+                                    : Image.network(
+                                        fotoPerfil!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => const Icon(
+                                          Icons.person,
+                                          size: 38,
+                                          color: Colores.gris,
+                                        ),
                                       ),
-                                    ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              linea1,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                height: 1.1,
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                linea1,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.15,
+                                ),
                               ),
-                            ),
-                            Text(
-                              linea2,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colores.rosa,
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                height: 1.1,
+                              Text(
+                                linea2,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colores.rosa,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.15,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      ?accion,
-                    ],
-                  ),
-                ],
+                        ?accion,
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            if (hijo != null) ...[hijo!, const SizedBox(height: 20)],
-          ],
+              if (hijo != null) ...[hijo!, const SizedBox(height: 18)],
+            ],
+          ),
         ),
       ),
     );

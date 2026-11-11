@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class Sesion {
@@ -9,9 +10,13 @@ class Sesion {
     'bookcut.correo',
     'bookcut.rol',
     'bookcut.foto',
+    'bookcut.usuario_id',
   ];
 
+  static final ValueNotifier<int> cambios = ValueNotifier<int>(0);
+
   static String? token;
+  static int? usuarioId;
   static String? nombre;
   static String? telefono;
   static String? correo;
@@ -34,6 +39,20 @@ class Sesion {
     return n.isEmpty ? '' : n.split(RegExp(r'\s+')).first;
   }
 
+  static String? formatearUrlFoto(dynamic valor) {
+    if (valor == null) return null;
+    final texto = '$valor'.trim();
+    if (texto.isEmpty || texto == 'null') return null;
+    if (texto.startsWith('http://') || texto.startsWith('https://')) {
+      return texto;
+    }
+    final limpia = texto.startsWith('/') ? texto.substring(1) : texto;
+    if (limpia.startsWith('storage/')) {
+      return 'https://bookcut.api.adsocidm.com/$limpia';
+    }
+    return 'https://bookcut.api.adsocidm.com/storage/$limpia';
+  }
+
   static Future<void> restaurar() async {
     final valores = await Future.wait(
       _claves.map((clave) => _almacen.read(key: clave)),
@@ -43,33 +62,44 @@ class Sesion {
     telefono = valores[2];
     correo = valores[3];
     rolId = int.tryParse(valores[4] ?? '');
-    fotoPerfil = valores[5];
+    fotoPerfil = formatearUrlFoto(valores[5]);
+    usuarioId = int.tryParse(valores[6] ?? '');
+    cambios.value++;
   }
 
   static Future<void> guardar({
     required String token,
+    int? usuarioId,
     String? nombre,
     String? telefono,
     String? correo,
     int? rolId,
     String? fotoPerfil,
   }) async {
+    final fotoFormateada = formatearUrlFoto(fotoPerfil);
     await _almacen.write(key: _claves[1], value: nombre);
     await _almacen.write(key: _claves[2], value: telefono);
     await _almacen.write(key: _claves[3], value: correo);
     await _almacen.write(key: _claves[4], value: rolId?.toString());
-    await _almacen.write(key: _claves[5], value: fotoPerfil);
+    await _almacen.write(key: _claves[5], value: fotoFormateada);
+    await _almacen.write(
+      key: _claves[6],
+      value: (usuarioId ?? Sesion.usuarioId)?.toString(),
+    );
     await _almacen.write(key: _claves[0], value: token);
 
     Sesion.token = token;
+    if (usuarioId != null) Sesion.usuarioId = usuarioId;
     Sesion.nombre = nombre;
     Sesion.telefono = telefono;
     Sesion.correo = correo;
     Sesion.rolId = rolId;
-    Sesion.fotoPerfil = fotoPerfil;
+    Sesion.fotoPerfil = fotoFormateada;
+    cambios.value++;
   }
 
   static Future<void> actualizarPerfil({
+    int? usuarioId,
     required String nombre,
     required String correo,
     required String telefono,
@@ -79,6 +109,7 @@ class Sesion {
     if (tokenActual == null || tokenActual.isEmpty) return;
     await guardar(
       token: tokenActual,
+      usuarioId: usuarioId ?? Sesion.usuarioId,
       nombre: nombre,
       correo: correo,
       telefono: telefono,
@@ -89,6 +120,7 @@ class Sesion {
 
   static Future<void> limpiar() async {
     token = null;
+    usuarioId = null;
     nombre = null;
     telefono = null;
     correo = null;
@@ -97,6 +129,7 @@ class Sesion {
     await Future.wait(
       _claves.map((clave) => _almacen.write(key: clave, value: null)),
     );
+    cambios.value++;
   }
 
   static Future<void> invalidar(String tokenUsado) async {

@@ -4,7 +4,7 @@ import '../models/barbero.dart';
 import '../models/cita.dart';
 import '../models/servicio.dart';
 
-Future<List<Cita>> listarCitasCliente() async {
+Future<List<Cita>> listarCitas() async {
   final datos = await obtenerLista('/citas', conToken: true);
   try {
     return datos.map((cita) {
@@ -17,6 +17,8 @@ Future<List<Cita>> listarCitasCliente() async {
     throw ApiException('El servidor devolvió una cita inválida.');
   }
 }
+
+Future<List<Cita>> listarCitasCliente() => listarCitas();
 
 Future<void> crearCita({
   required Barbero? barbero,
@@ -83,8 +85,30 @@ Future<void> confirmarAsistenciaCita(int idCita) async {
 }
 
 Future<void> cancelarCitaCliente(int idCita) async {
-  await eliminarJson(
+  await eliminarJson('/citas/$idCita', conToken: true);
+}
+
+Future<bool> cancelarCitaBarbero(int idCita, {required String motivo}) async {
+  final motivoLimpio = motivo.trim();
+  if (motivoLimpio.isEmpty) {
+    throw ApiException('Ingresa el motivo de la cancelación.');
+  }
+  final respuesta = await eliminarJson(
     '/citas/$idCita',
+    datos: {'motivo': motivoLimpio},
+    conToken: true,
+  );
+  return respuesta['correo_enviado'] == true;
+}
+
+Future<void> finalizarCita(int idCita) async {
+  await actualizarJson('/citas/$idCita/finalizar', {}, conToken: true);
+}
+
+Future<void> registrarPagoCita(int idCita, {required String metodoPago}) async {
+  await enviarJson(
+    '/citas/$idCita/pago',
+    {'metodo_pago': metodoPago},
     conToken: true,
   );
 }
@@ -96,10 +120,7 @@ Future<void> reagendarCitaCliente({
 }) async {
   await actualizarJson(
     '/citas/$idCita/reagendar',
-    {
-      'fecha': fechaApi(fecha),
-      'hora': hora,
-    },
+    {'fecha': fechaApi(fecha), 'hora': hora},
     conToken: true,
   );
 }
