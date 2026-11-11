@@ -1,0 +1,105 @@
+name: Compilar y publicar APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build_and_release:
+    name: Compilar y publicar última APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Analizar código y ejecutar pruebas
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Preparar firma de lanzamiento desde Secrets
+        id: firma
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            KEYSTORE_FILE="$RUNNER_TEMP/release.jks"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$KEYSTORE_FILE"
+            chmod 600 "$KEYSTORE_FILE"
+            {
+              printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+              printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+              printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+              printf 'storeFile=%s\n' "$KEYSTORE_FILE"
+            } > android/key.properties
+            chmod 600 android/key.properties
+            echo "oficial=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Faltan Secrets de firma Android; esta compilación usará firma temporal de depuración."
+            echo "oficial=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compilar APK release
+        env:
+          API_URL: ${{ secrets.API_URL }}
+        run: |
+          if [ -n "$API_URL" ]; then
+            flutter build apk --release --dart-define="API_URL=$API_URL"
+          else
+            flutter build apk --release
+          fi
+          mkdir -p release-artifacts
+          cp build/app/outputs/flutter-apk/app-release.apk release-artifacts/BookCut-app.apk
+
+      - name: Limpiar archivos sensibles temporales
+        if: always()
+        run: rm -f android/key.properties "$RUNNER_TEMP/release.jks"
+
+      - name: Actualizar etiqueta latest al commit actual
+        run: |
+          git tag -f latest
+          git push --force origin refs/tags/latest
+
+      - name: Publicar o actualizar APK en GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Última versión — Book&Cut App
+          body: |
+            Descarga directa de la última APK compilada desde `main` (`${{ github.sha }}`).
+
+            - Archivo: `BookCut-app.apk`
+          make_latest: "true"
+          prerelease: false
+          draft: false
+          overwrite_files: true
+          files: release-artifacts/BookCut-app.apk

@@ -45,3 +45,15 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+
+# Credentials, env files, signing keys, and release output
+.env
+.env.*
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+key.properties
+release-artifacts/

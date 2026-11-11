@@ -1,4 +1,6 @@
+import 'package:book_cut_app/core/config.dart';
 import 'package:book_cut_app/core/fechas.dart';
+import 'package:book_cut_app/core/sesion.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -31,6 +33,24 @@ void main() {
       expect(precioBonito(18000), '\$18.000');
       expect(precioBonito(88000), '\$88.000');
       expect(precioBonito(1250000), '\$1.250.000');
+    });
+  });
+
+  group('configuracion y fotos', () {
+    test('apiOrigen y formatearUrlFoto usan la URL configurada', () {
+      expect(apiOrigen, isNotEmpty);
+      expect(
+        Sesion.formatearUrlFoto('perfiles/avatar.png'),
+        '$apiOrigen/storage/perfiles/avatar.png',
+      );
+      expect(
+        Sesion.formatearUrlFoto('/storage/perfiles/avatar.png'),
+        '$apiOrigen/storage/perfiles/avatar.png',
+      );
+      expect(
+        Sesion.formatearUrlFoto('https://cdn.ejemplo.com/foto.jpg'),
+        'https://cdn.ejemplo.com/foto.jpg',
+      );
     });
   });
 }

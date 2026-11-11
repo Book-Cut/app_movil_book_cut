@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'config.dart';
+
 class Sesion {
   static const _almacen = FlutterSecureStorage();
   static const _claves = [
@@ -48,9 +50,9 @@ class Sesion {
     }
     final limpia = texto.startsWith('/') ? texto.substring(1) : texto;
     if (limpia.startsWith('storage/')) {
-      return 'https://bookcut.api.adsocidm.com/$limpia';
+      return '$apiOrigen/$limpia';
     }
-    return 'https://bookcut.api.adsocidm.com/storage/$limpia';
+    return '$apiOrigen/storage/$limpia';
   }
 
   static Future<void> restaurar() async {

@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import 'config.dart';
 import 'sesion.dart';
 
-const apiUrl = 'https://bookcut.api.adsocidm.com/api';
+export 'config.dart' show apiUrl;
+
+
 const _timeoutApi = Duration(seconds: 20);
 
 class ApiException implements Exception {
