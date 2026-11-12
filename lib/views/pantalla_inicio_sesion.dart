@@ -221,8 +221,7 @@ class _PantallaInicioSesionState extends State<PantallaInicioSesion> {
                                 } catch (_) {
                                   setModalState(() {
                                     exito = false;
-                                    mensaje =
-                                        'No se pudo enviar el enlace. Intenta de nuevo.';
+                                    mensaje = 'No se pudo enviar el enlace. Intenta de nuevo.';
                                   });
                                 } finally {
                                   setModalState(() => enviando = false);
@@ -305,7 +304,10 @@ class _PantallaInicioSesionState extends State<PantallaInicioSesion> {
                       Colores.azulOscuro,
                       BlendMode.srcIn,
                     ),
-                    child: Image.asset('lib/assets/logo_blanca.png', width: 176),
+                    child: Image.asset(
+                      'lib/assets/logo_blanca.png',
+                      width: 176,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 28),
@@ -501,33 +503,6 @@ class _PantallaInicioSesionState extends State<PantallaInicioSesion> {
                       ),
                     ),
                     label: const Text('Continuar con Google'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colores.azulOscuro,
-                      backgroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xFFD4D4D8)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: _cargando
-                        ? null
-                        : () => _iniciarSesionSocial('facebook'),
-                    icon: const Text(
-                      'f',
-                      style: TextStyle(
-                        color: Color(0xFF1877F2),
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    label: const Text('Continuar con Facebook'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colores.azulOscuro,
                       backgroundColor: Colors.white,

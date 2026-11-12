@@ -45,8 +45,10 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
   }
 
   String _traducirErrorRegistro(String mensaje) {
-    if (RegExp(r'correo has already been taken', caseSensitive: false)
-        .hasMatch(mensaje)) {
+    if (RegExp(
+      r'correo has already been taken',
+      caseSensitive: false,
+    ).hasMatch(mensaje)) {
       return 'Este correo ya tiene una cuenta. Inicia sesión o usa otro correo.';
     }
     return mensaje;
@@ -220,10 +222,7 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                   ),
                   child: const Text(
                     'Cerrar',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ),
               ),
@@ -330,9 +329,8 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                         validator: (valor) {
                           final correo = (valor ?? '').trim().toLowerCase();
                           if (correo.isEmpty) return 'Ingresa tu correo.';
-                          final match = RegExp(
-                            r'^[^\s@]+@([^\s@]+\.[^\s@]+)$',
-                          ).firstMatch(correo);
+                          final match = RegExp(r'^[^\s@]+@([^\s@]+\.[^\s@]+)$')
+                              .firstMatch(correo);
                           if (match == null) {
                             return 'Ingresa un correo válido.';
                           }
@@ -473,33 +471,6 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                       ),
                     ),
                     label: const Text('Registrarse con Google'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colores.azulOscuro,
-                      backgroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xFFD4D4D8)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: _cargando
-                        ? null
-                        : () => _registrarConSocial('facebook'),
-                    icon: const Text(
-                      'f',
-                      style: TextStyle(
-                        color: Color(0xFF1877F2),
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    label: const Text('Registrarse con Facebook'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colores.azulOscuro,
                       backgroundColor: Colors.white,

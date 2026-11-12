@@ -48,7 +48,7 @@ Future<void> registrarConSocial({
 }
 
 Future<void> _autenticarSocial(String proveedor, {String? registro}) async {
-  if (proveedor != 'google' && proveedor != 'facebook') {
+  if (proveedor != 'google') {
     throw ArgumentError.value(proveedor, 'proveedor');
   }
 

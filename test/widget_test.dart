@@ -62,7 +62,6 @@ void main() {
     expect(find.text('Confirmar contraseña'), findsOneWidget);
     expect(find.text('Acepto los términos y condiciones.'), findsOneWidget);
     expect(find.text('Registrarse con Google'), findsOneWidget);
-    expect(find.text('Registrarse con Facebook'), findsOneWidget);
     expect(find.text('Gmail, Hotmail, Outlook o sena.edu.co'), findsNothing);
 
     await tester.ensureVisible(find.text('Ver'));
@@ -72,9 +71,7 @@ void main() {
     await tester.tap(find.text('Cerrar'));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(
-      find.widgetWithText(TextFormField, 'Teléfono'),
-    );
+    await tester.ensureVisible(find.widgetWithText(TextFormField, 'Teléfono'));
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Teléfono'),
       '300abc1234567',
@@ -119,22 +116,23 @@ void main() {
     );
   });
 
-  testWidgets('PantallaAdminPendiente muestra mensaje conciso y sus dos botones', (
-    WidgetTester tester,
-  ) async {
-    Sesion.nombre = 'Juan Admin';
-    await tester.pumpWidget(
-      const MaterialApp(home: PantallaAdminPendiente()),
-    );
+  testWidgets(
+    'PantallaAdminPendiente muestra mensaje conciso y sus dos botones',
+    (WidgetTester tester) async {
+      Sesion.nombre = 'Juan Admin';
+      await tester.pumpWidget(
+        const MaterialApp(home: PantallaAdminPendiente()),
+      );
 
-    expect(
-      find.text('El panel de administrador aún está pendiente.'),
-      findsOneWidget,
-    );
-    expect(find.text('Ir a mi perfil'), findsOneWidget);
-    expect(find.text('Cerrar sesión'), findsOneWidget);
-    expect(find.text('Panel de administrador próximamente'), findsNothing);
-  });
+      expect(
+        find.text('El panel de administrador aún está pendiente.'),
+        findsOneWidget,
+      );
+      expect(find.text('Ir a mi perfil'), findsOneWidget);
+      expect(find.text('Cerrar sesión'), findsOneWidget);
+      expect(find.text('Panel de administrador próximamente'), findsNothing);
+    },
+  );
 
   test('pantallaInicioPorRol separa cliente, barbero, admin e invitado', () {
     Sesion.token = null;
@@ -281,27 +279,30 @@ void main() {
     expect(find.text('Noche'), findsNothing);
   });
 
-  test('generarHorasFranja y ajustarHoraFinTrasInicio respetan apertura/cierre', () {
-    final lunes = generarHorasFranja('09:00', '19:00');
-    expect(lunes.first, '09:00');
-    expect(lunes.last, '19:00');
-    expect(lunes.length, 21);
+  test(
+    'generarHorasFranja y ajustarHoraFinTrasInicio respetan apertura/cierre',
+    () {
+      final lunes = generarHorasFranja('09:00', '19:00');
+      expect(lunes.first, '09:00');
+      expect(lunes.last, '19:00');
+      expect(lunes.length, 21);
 
-    final sabado = generarHorasFranja('10:00', '20:00');
-    expect(sabado.first, '10:00');
-    expect(sabado.last, '20:00');
+      final sabado = generarHorasFranja('10:00', '20:00');
+      expect(sabado.first, '10:00');
+      expect(sabado.last, '20:00');
 
-    expect(
-      ajustarHoraFinTrasInicio('09:00', '19:00', horaCierre: '19:00'),
-      '19:00',
-    );
-    expect(
-      ajustarHoraFinTrasInicio('18:30', '18:30', horaCierre: '19:00'),
-      '19:00',
-    );
-    expect(
-      ajustarHoraFinTrasInicio('10:00', '21:00', horaCierre: '20:00'),
-      '20:00',
-    );
-  });
+      expect(
+        ajustarHoraFinTrasInicio('09:00', '19:00', horaCierre: '19:00'),
+        '19:00',
+      );
+      expect(
+        ajustarHoraFinTrasInicio('18:30', '18:30', horaCierre: '19:00'),
+        '19:00',
+      );
+      expect(
+        ajustarHoraFinTrasInicio('10:00', '21:00', horaCierre: '20:00'),
+        '20:00',
+      );
+    },
+  );
 }
