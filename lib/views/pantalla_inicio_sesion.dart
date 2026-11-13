@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 
 import '../core/api.dart';
 import '../core/colores.dart';
+import '../core/sesion.dart';
 import '../services/autenticacion_service.dart';
 import 'navegacion_rol.dart';
+import 'pantalla_perfil.dart';
 import 'pantalla_registro.dart';
 
 class PantallaInicioSesion extends StatefulWidget {
@@ -50,7 +52,7 @@ class _PantallaInicioSesionState extends State<PantallaInicioSesion> {
         contrasenha: _contrasenhaController.text,
       );
       if (!mounted) return;
-      _continuarDespuesDeAcceso();
+      await _continuarDespuesDeAcceso();
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.mensaje);
     } catch (_) {
@@ -69,9 +71,17 @@ class _PantallaInicioSesionState extends State<PantallaInicioSesion> {
     });
 
     try {
-      await iniciarSesionSocial(proveedor: proveedor);
+      final signupToken = await iniciarSesionSocial(proveedor: proveedor);
       if (!mounted) return;
-      _continuarDespuesDeAcceso();
+      if (signupToken != null) {
+        final registroCompleto = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => PantallaRegistro(googleSignupToken: signupToken),
+          ),
+        );
+        if (!mounted || registroCompleto != true) return;
+      }
+      await _continuarDespuesDeAcceso();
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.mensaje);
     } catch (_) {
@@ -88,10 +98,17 @@ class _PantallaInicioSesionState extends State<PantallaInicioSesion> {
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const PantallaRegistro()));
     if (!mounted || registrado != true) return;
-    _continuarDespuesDeAcceso();
+    await _continuarDespuesDeAcceso();
   }
 
-  void _continuarDespuesDeAcceso() {
+  Future<void> _continuarDespuesDeAcceso() async {
+    if ((Sesion.telefono ?? '').trim().isEmpty) {
+      await Navigator.of(
+        context,
+      ).push<void>(MaterialPageRoute(builder: (_) => const PantallaPerfil()));
+      if (!mounted) return;
+    }
+
     if (widget.volverAlOrigen) {
       Navigator.of(context).pop(true);
     } else {

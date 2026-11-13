@@ -8,7 +8,9 @@ import '../services/autenticacion_service.dart';
 import 'pantalla_verificar_correo.dart';
 
 class PantallaRegistro extends StatefulWidget {
-  const PantallaRegistro({super.key});
+  final String? googleSignupToken;
+
+  const PantallaRegistro({super.key, this.googleSignupToken});
 
   @override
   State<PantallaRegistro> createState() => _PantallaRegistroState();
@@ -110,9 +112,9 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 
   Future<void> _registrarConSocial(String proveedor) async {
     final telefono = _telefonoController.text.trim();
-    if (!RegExp(r'^\d{10}$').hasMatch(telefono)) {
+    if (telefono.isNotEmpty && !RegExp(r'^\d{10}$').hasMatch(telefono)) {
       setState(() {
-        _error = 'Ingresa un teléfono de 10 dígitos para continuar.';
+        _error = 'Ingresa un teléfono de 10 dígitos o déjalo vacío para añadirlo después.';
         _errorTerminos = null;
       });
       return;
@@ -132,7 +134,10 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     });
 
     try {
-      await registrarConSocial(proveedor: proveedor, telefono: telefono);
+      await registrarConSocial(
+        proveedor: proveedor,
+        telefono: telefono.isEmpty ? null : telefono,
+      );
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (error) {
       if (mounted) {
@@ -141,6 +146,49 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'No se pudo conectar. Revisa tu conexión.');
+      }
+    } finally {
+      if (mounted) setState(() => _cargando = false);
+    }
+  }
+
+  Future<void> _completarRegistroGooglePendiente() async {
+    final signupToken = widget.googleSignupToken;
+    if (signupToken == null || _cargando) return;
+
+    final telefono = _telefonoController.text.trim();
+    if (telefono.isNotEmpty && !RegExp(r'^\d{10}$').hasMatch(telefono)) {
+      setState(
+        () => _error = 'El teléfono debe tener 10 dígitos o quedar vacío.',
+      );
+      return;
+    }
+    if (!_aceptaTerminos) {
+      setState(
+        () => _errorTerminos = 'Debes aceptar los términos y condiciones.',
+      );
+      return;
+    }
+
+    setState(() {
+      _cargando = true;
+      _error = null;
+      _errorTerminos = null;
+    });
+
+    try {
+      await completarRegistroGoogle(
+        signupToken: signupToken,
+        telefono: telefono.isEmpty ? null : telefono,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.mensaje);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _error = 'No se pudo crear la cuenta. Revisa tu conexión.',
+        );
       }
     } finally {
       if (mounted) setState(() => _cargando = false);
@@ -261,6 +309,10 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.googleSignupToken != null) {
+      return _vistaCompletarRegistroGoogle();
+    }
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
@@ -503,6 +555,138 @@ class _PantallaRegistroState extends State<PantallaRegistro> {
                         : const Icon(Icons.person_add_alt_1),
                     label: Text(
                       _cargando ? 'Creando cuenta...' : 'Crear cuenta',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colores.carmin,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _vistaCompletarRegistroGoogle() {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: Colores.fondo,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IconButton(
+                  tooltip: 'Volver',
+                  onPressed: _cargando ? null : () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back),
+                  color: Colores.azulOscuro,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Completa tu cuenta',
+                  style: TextStyle(
+                    color: Colores.azulOscuro,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Tu correo de Google está verificado. Acepta los términos para crear la cuenta; puedes añadir el teléfono ahora o después desde tu perfil.',
+                  style: TextStyle(
+                    color: Colores.gris,
+                    fontSize: 15,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _telefonoController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 10,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  decoration: _decoracion(
+                    etiqueta: 'Teléfono (opcional)',
+                    icono: Icons.phone_outlined,
+                  ),
+                ),
+                const Text(
+                  'Si lo dejas vacío, te pediremos completarlo en tu perfil antes de reservar.',
+                  style: TextStyle(color: Colores.gris, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Checkbox(
+                      value: _aceptaTerminos,
+                      activeColor: Colores.carmin,
+                      onChanged: _cargando
+                          ? null
+                          : (acepta) => setState(() {
+                              _aceptaTerminos = acepta ?? false;
+                              if (_aceptaTerminos) _errorTerminos = null;
+                            }),
+                    ),
+                    const Expanded(
+                      child: Text('Acepto los términos y condiciones.'),
+                    ),
+                    TextButton(
+                      onPressed: _verTerminos,
+                      child: const Text('Ver'),
+                    ),
+                  ],
+                ),
+                if (_errorTerminos != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: Text(
+                      _errorTerminos!,
+                      style: const TextStyle(color: Colores.carmin),
+                    ),
+                  ),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_error!, style: const TextStyle(color: Colores.carmin)),
+                ],
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton.icon(
+                    onPressed: _cargando
+                        ? null
+                        : _completarRegistroGooglePendiente,
+                    icon: _cargando
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.person_add_alt_1),
+                    label: Text(
+                      _cargando
+                          ? 'Creando cuenta...'
+                          : 'Aceptar y crear cuenta',
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colores.carmin,

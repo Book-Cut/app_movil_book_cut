@@ -9,6 +9,7 @@ import 'package:book_cut_app/views/pantalla_admin_pendiente.dart';
 import 'package:book_cut_app/views/pantalla_barbero.dart';
 import 'package:book_cut_app/views/pantalla_bienvenida.dart';
 import 'package:book_cut_app/views/pantalla_principal.dart';
+import 'package:book_cut_app/views/pantalla_registro.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +47,51 @@ void main() {
     expect(find.text('Contraseña'), findsOneWidget);
     expect(find.text('¿Olvidaste tu contraseña?'), findsOneWidget);
   });
+
+  testWidgets('Google signup requires terms and keeps phone optional', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: PantallaRegistro(googleSignupToken: 'pending-google-signup'),
+      ),
+    );
+
+    expect(find.text('Completa tu cuenta'), findsOneWidget);
+    expect(find.text('Teléfono (opcional)'), findsOneWidget);
+    expect(find.text('Aceptar y crear cuenta'), findsOneWidget);
+
+    await tester.tap(find.text('Aceptar y crear cuenta'));
+    await tester.pump();
+
+    expect(
+      find.text('Debes aceptar los términos y condiciones.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'Google signup completion allows an optional phone but requires terms',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: PantallaRegistro(googleSignupToken: 'pending-signup-token'),
+        ),
+      );
+
+      expect(find.text('Completa tu cuenta'), findsOneWidget);
+      expect(find.text('Teléfono (opcional)'), findsOneWidget);
+      expect(find.text('Aceptar y crear cuenta'), findsOneWidget);
+
+      await tester.tap(find.text('Aceptar y crear cuenta'));
+      await tester.pump();
+
+      expect(
+        find.text('Debes aceptar los términos y condiciones.'),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('opens registration from the login form and validates domains', (
     WidgetTester tester,

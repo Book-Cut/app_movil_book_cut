@@ -28,16 +28,16 @@ Future<String> solicitarRecuperacionContrasenha({
       : 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.';
 }
 
-Future<void> iniciarSesionSocial({required String proveedor}) async {
-  await _autenticarSocial(proveedor);
+Future<String?> iniciarSesionSocial({required String proveedor}) async {
+  return _autenticarSocial(proveedor);
 }
 
 Future<void> registrarConSocial({
   required String proveedor,
-  required String telefono,
+  required String? telefono,
 }) async {
   final respuesta = await enviarJson('/auth/mobile/social/register', {
-    'telefono': telefono,
+    'telefono': telefono?.trim(),
     'terminos_aceptados': true,
   });
   final registro = respuesta['registration'];
@@ -47,7 +47,25 @@ Future<void> registrarConSocial({
   await _autenticarSocial(proveedor, registro: registro);
 }
 
-Future<void> _autenticarSocial(String proveedor, {String? registro}) async {
+Future<void> completarRegistroGoogle({
+  required String signupToken,
+  String? telefono,
+}) async {
+  final registro = await enviarJson('/auth/google/complete-registration', {
+    'signup_token': signupToken,
+    'telefono': telefono?.trim(),
+    'terminos_aceptados': true,
+  });
+  final code = registro['code'];
+  if (code is! String || code.isEmpty) {
+    throw ApiException('El servidor no pudo completar el registro con Google.');
+  }
+
+  final respuesta = await enviarJson('/auth/mobile/exchange', {'code': code});
+  await _guardarSesion(respuesta);
+}
+
+Future<String?> _autenticarSocial(String proveedor, {String? registro}) async {
   if (proveedor != 'google') {
     throw ArgumentError.value(proveedor, 'proveedor');
   }
@@ -69,6 +87,11 @@ Future<void> _autenticarSocial(String proveedor, {String? registro}) async {
     rethrow;
   }
   final callback = Uri.parse(callbackUrl);
+  final signupToken = callback.queryParameters['signup_token'];
+  if (signupToken != null && signupToken.isNotEmpty) {
+    return signupToken;
+  }
+
   final error = callback.queryParameters['error'];
   if (error != null) {
     throw ApiException(switch (error) {
@@ -95,6 +118,7 @@ Future<void> _autenticarSocial(String proveedor, {String? registro}) async {
 
   final respuesta = await enviarJson('/auth/mobile/exchange', {'code': code});
   await _guardarSesion(respuesta);
+  return null;
 }
 
 Future<void> enviarCodigoRegistro({
