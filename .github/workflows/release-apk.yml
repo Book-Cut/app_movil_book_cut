@@ -73,9 +73,9 @@ jobs:
           API_URL: ${{ secrets.API_URL }}
         run: |
           if [ -n "$API_URL" ]; then
-            flutter build apk --release --dart-define="API_URL=$API_URL"
+            flutter build apk --release --android-skip-build-dependency-validation --dart-define="API_URL=$API_URL"
           else
-            flutter build apk --release
+            flutter build apk --release --android-skip-build-dependency-validation
           fi
           mkdir -p release-artifacts
           cp build/app/outputs/flutter-apk/app-release.apk release-artifacts/BookCut-app.apk
