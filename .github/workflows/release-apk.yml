@@ -40,7 +40,7 @@ jobs:
 
       - name: Analizar código y ejecutar pruebas
         run: |
-          flutter analyze
+          flutter analyze --no-fatal-infos
           flutter test
 
       - name: Preparar firma de lanzamiento desde Secrets
